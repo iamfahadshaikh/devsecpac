@@ -9,6 +9,7 @@ from rich.console import Console
 from .contracts import ToolResult, StatusEnum
 from .discovery import TargetDiscovery
 from .reporter import Reporter
+from .installer import ToolInstaller
 from .scanners.secrets import GitleaksScanner, TruffleHogScanner
 from .scanners.docker import HadolintScanner
 from .scanners.iac import CheckovScanner, KubeconformScanner
@@ -46,9 +47,20 @@ def run_info():
         else:
             console.print(f"  • [yellow]✘[/yellow] {s.name:<32} [dim]Missing '{s.binary_name}' in PATH (will gracefully SKIP)[/dim]")
     console.print()
+    console.print("[dim]💡 Run 'devsec setup' to automatically install missing security scanners.[/dim]\n")
 
 
-def run_scan(target_path: Path, output_json: Path, output_md: Path, strict: bool = False) -> int:
+def run_setup():
+    installer = ToolInstaller()
+    installer.install_all()
+
+
+def run_scan(target_path: Path, output_json: Path, output_md: Path, strict: bool = False, install_missing: bool = False) -> int:
+    if install_missing:
+        console.print("[bold blue]🔍 Checking and installing missing tools first...[/bold blue]")
+        installer = ToolInstaller()
+        installer.install_all()
+
     console.print(f"\n[bold green]🚀 Initiating DevSecOps Scan on:[/bold green] [bold white]{target_path.resolve()}[/bold white]\n")
 
     # Stack discovery
@@ -119,18 +131,25 @@ def main():
     scan_parser.add_argument("--json", default="devsec-report.json", help="Path for JSON status report")
     scan_parser.add_argument("--md", default="devsec-summary.md", help="Path for Markdown executive summary")
     scan_parser.add_argument("--strict", action="store_true", help="Fail pipeline even on Medium severity issues")
+    scan_parser.add_argument("--install-missing", action="store_true", help="Automatically download and install missing tools before scanning")
 
     # info command
     subparsers.add_parser("info", help="Show environment tool discovery status")
+
+    # setup command
+    subparsers.add_parser("setup", help="Auto-download and configure missing DevSecOps tools into user bin")
 
     args = parser.parse_args()
 
     if args.command == "info":
         run_info()
         sys.exit(0)
+    elif args.command == "setup":
+        run_setup()
+        sys.exit(0)
     elif args.command == "scan":
         target = Path(args.target).resolve()
-        code = run_scan(target, Path(args.json), Path(args.md), strict=args.strict)
+        code = run_scan(target, Path(args.json), Path(args.md), strict=args.strict, install_missing=args.install_missing)
         sys.exit(code)
     else:
         parser.print_help()
