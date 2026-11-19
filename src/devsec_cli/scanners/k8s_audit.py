@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 import yaml
 from .base import BaseScanner
-from ..contracts import ToolResult, StatusEnum, FindingCounts
+from ..contracts import ToolResult, StatusEnum, FindingCounts, FindingDetail
 from ..discovery import TargetDiscovery
 
 
@@ -25,20 +25,29 @@ class K8sStructuralAuditScanner(BaseScanner):
             return self.create_not_applicable_result("No Kubernetes manifests detected")
 
         findings = FindingCounts()
-        violations = []
+        items = []
 
         for manifest_path in manifests:
             try:
                 content = manifest_path.read_text(encoding="utf-8", errors="ignore")
                 docs = yaml.safe_load_all(content)
+                rel_name = str(manifest_path.relative_to(target_dir)) if str(manifest_path).startswith(str(target_dir)) else manifest_path.name
                 for doc in docs:
                     if not isinstance(doc, dict):
                         continue
-                    self._audit_document(doc, manifest_path.name, findings, violations)
+                    self._audit_document(doc, rel_name, findings, items)
             except Exception as e:
-                # Syntax error or unparseable YAML
                 findings.low += 1
-                violations.append(f"{manifest_path.name}: Failed to parse YAML: {e}")
+                items.append(
+                    FindingDetail(
+                        severity="LOW",
+                        tool=self.name,
+                        file=manifest_path.name,
+                        line="",
+                        rule="YAMLParseError",
+                        description=f"Failed to parse YAML: {e}"
+                    )
+                )
 
         elapsed = round(time.time() - start_time, 2)
         status = StatusEnum.FAIL if findings.has_blocking else StatusEnum.PASS
@@ -59,12 +68,11 @@ class K8sStructuralAuditScanner(BaseScanner):
             summary=summary,
             findings=findings,
             duration_seconds=elapsed,
-            details={"violations": violations[:50]}  # cap display
+            items=items
         )
 
-    def _audit_document(self, doc: dict, filename: str, findings: FindingCounts, violations: list):
+    def _audit_document(self, doc: dict, filename: str, findings: FindingCounts, items: list):
         kind = doc.get("kind", "")
-        # Inspect specs of Pod, Deployment, DaemonSet, StatefulSet, Job, CronJob
         pod_spec = None
         if kind == "Pod":
             pod_spec = doc.get("spec", {})
@@ -79,13 +87,13 @@ class K8sStructuralAuditScanner(BaseScanner):
         # 1. Host Network / PID / IPC checks (High)
         if pod_spec.get("hostNetwork", False):
             findings.high += 1
-            violations.append(f"{filename} [{kind}]: Shares host network namespace (hostNetwork: true)")
+            items.append(FindingDetail("HIGH", self.name, filename, "", "K8S-HOST-NET", f"[{kind}] Shares host network namespace (hostNetwork: true)"))
         if pod_spec.get("hostPID", False):
             findings.high += 1
-            violations.append(f"{filename} [{kind}]: Shares host PID namespace (hostPID: true)")
+            items.append(FindingDetail("HIGH", self.name, filename, "", "K8S-HOST-PID", f"[{kind}] Shares host PID namespace (hostPID: true)"))
         if pod_spec.get("hostIPC", False):
             findings.high += 1
-            violations.append(f"{filename} [{kind}]: Shares host IPC namespace (hostIPC: true)")
+            items.append(FindingDetail("HIGH", self.name, filename, "", "K8S-HOST-IPC", f"[{kind}] Shares host IPC namespace (hostIPC: true)"))
 
         # 2. HostPath Volume checks (Critical)
         volumes = pod_spec.get("volumes", [])
@@ -93,7 +101,7 @@ class K8sStructuralAuditScanner(BaseScanner):
             for vol in volumes:
                 if isinstance(vol, dict) and "hostPath" in vol:
                     findings.critical += 1
-                    violations.append(f"{filename} [{kind}]: Insecure host volume mount detected ({vol.get('name')})")
+                    items.append(FindingDetail("CRITICAL", self.name, filename, "", "K8S-HOST-PATH", f"[{kind}] Insecure host volume mount ({vol.get('name')})"))
 
         # 3. Container SecurityContext & Resource checks
         containers = pod_spec.get("containers", [])
@@ -104,29 +112,21 @@ class K8sStructuralAuditScanner(BaseScanner):
                 c_name = container.get("name", "unknown")
                 sec_ctx = container.get("securityContext", {}) or {}
 
-                # Privileged mode (Critical)
                 if sec_ctx.get("privileged", False):
                     findings.critical += 1
-                    violations.append(f"{filename} [{kind}/{c_name}]: Running in privileged mode!")
+                    items.append(FindingDetail("CRITICAL", self.name, filename, "", "K8S-PRIVILEGED", f"[{kind}/{c_name}] Container runs in privileged mode"))
 
-                # Root Execution (High)
                 run_as_user = sec_ctx.get("runAsUser")
                 run_as_non_root = sec_ctx.get("runAsNonRoot")
                 if run_as_user == 0 or run_as_non_root is False:
                     findings.high += 1
-                    violations.append(f"{filename} [{kind}/{c_name}]: Explicitly configured to run as root")
+                    items.append(FindingDetail("HIGH", self.name, filename, "", "K8S-RUN-AS-ROOT", f"[{kind}/{c_name}] Explicitly configured to run as root"))
 
-                # Privilege Escalation (Medium)
                 if sec_ctx.get("allowPrivilegeEscalation") is True:
                     findings.medium += 1
-                    violations.append(f"{filename} [{kind}/{c_name}]: allowPrivilegeEscalation is enabled")
+                    items.append(FindingDetail("MEDIUM", self.name, filename, "", "K8S-PRIV-ESC", f"[{kind}/{c_name}] allowPrivilegeEscalation is enabled"))
 
-                # Read-only root filesystem (Low)
-                if not sec_ctx.get("readOnlyRootFilesystem", False):
-                    findings.low += 1
-
-                # Missing Resource limits (Low)
                 resources = container.get("resources", {}) or {}
                 if not resources.get("limits"):
                     findings.low += 1
-                    violations.append(f"{filename} [{kind}/{c_name}]: Missing CPU/Memory resource limits")
+                    items.append(FindingDetail("LOW", self.name, filename, "", "K8S-NO-LIMITS", f"[{kind}/{c_name}] Missing CPU/Memory resource limits"))

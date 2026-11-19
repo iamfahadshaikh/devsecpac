@@ -3,7 +3,7 @@
 from pathlib import Path
 import json
 from .base import BaseScanner
-from ..contracts import ToolResult, StatusEnum, FindingCounts
+from ..contracts import ToolResult, StatusEnum, FindingCounts, FindingDetail
 from ..runner import ProcessRunner
 
 
@@ -30,6 +30,7 @@ class GitleaksScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir))
 
         findings = FindingCounts()
+        items = []
         summary = "No secrets detected"
         status = StatusEnum.PASS
 
@@ -37,9 +38,25 @@ class GitleaksScanner(BaseScanner):
             try:
                 data = json.loads(report_file.read_text(encoding="utf-8"))
                 if isinstance(data, list) and len(data) > 0:
-                    findings.high = len(data)  # Gitleaks findings treated as High
+                    findings.high = len(data)
                     status = StatusEnum.FAIL
                     summary = f"Detected {len(data)} potential secret(s)"
+
+                    for finding in data:
+                        file_path = finding.get("File", "unknown")
+                        line_no = str(finding.get("StartLine", ""))
+                        rule_id = finding.get("RuleID", "Secret")
+                        desc = finding.get("Description", rule_id)
+                        items.append(
+                            FindingDetail(
+                                severity="HIGH",
+                                tool=self.name,
+                                file=file_path,
+                                line=line_no,
+                                rule=rule_id,
+                                description=desc
+                            )
+                        )
             except Exception:
                 pass
             finally:
@@ -52,7 +69,8 @@ class GitleaksScanner(BaseScanner):
             exit_code=code,
             summary=summary,
             findings=findings,
-            duration_seconds=elapsed
+            duration_seconds=elapsed,
+            items=items
         )
 
 
@@ -64,7 +82,6 @@ class TruffleHogScanner(BaseScanner):
         if not self.is_tool_available():
             return self.create_skipped_result("trufflehog binary not found in PATH")
 
-        # TruffleHog scanning filesystem
         cmd = [
             str(self.binary_path),
             "filesystem",
@@ -76,9 +93,9 @@ class TruffleHogScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir))
 
         findings = FindingCounts()
+        items = []
         verified_count = 0
 
-        # TruffleHog outputs line-delimited JSON
         for line in stdout.splitlines():
             line = line.strip()
             if not line:
@@ -87,6 +104,20 @@ class TruffleHogScanner(BaseScanner):
                 item = json.loads(line)
                 if item.get("Verified", False):
                     verified_count += 1
+                    source_meta = item.get("SourceMetadata", {}).get("Data", {}).get("Filesystem", {})
+                    file_path = source_meta.get("file", "unknown")
+                    line_no = str(source_meta.get("line", ""))
+                    detector = item.get("DetectorName", "VerifiedSecret")
+                    items.append(
+                        FindingDetail(
+                            severity="CRITICAL",
+                            tool=self.name,
+                            file=file_path,
+                            line=line_no,
+                            rule=detector,
+                            description=f"Verified {detector} secret credential"
+                        )
+                    )
             except Exception:
                 continue
 
@@ -105,5 +136,6 @@ class TruffleHogScanner(BaseScanner):
             exit_code=code,
             summary=summary,
             findings=findings,
-            duration_seconds=elapsed
+            duration_seconds=elapsed,
+            items=items
         )

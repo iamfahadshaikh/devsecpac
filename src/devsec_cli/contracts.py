@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import json
 
 
@@ -33,6 +33,16 @@ class FindingCounts:
 
 
 @dataclass
+class FindingDetail:
+    severity: str           # CRITICAL, HIGH, MEDIUM, LOW, INFO
+    tool: str               # Scanner name
+    file: str               # File where issue was found
+    line: Optional[str] = "" # Line number or range
+    rule: str = ""          # Rule ID / CVE ID
+    description: str = ""   # Brief issue description
+
+
+@dataclass
 class ToolResult:
     tool_name: str
     category: str
@@ -41,12 +51,14 @@ class ToolResult:
     summary: str = ""
     findings: FindingCounts = field(default_factory=FindingCounts)
     duration_seconds: float = 0.0
+    items: List[FindingDetail] = field(default_factory=list)
     details: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         data["status"] = self.status.value
         data["findings"] = asdict(self.findings)
+        data["items"] = [asdict(item) for item in self.items]
         return data
 
     def to_json(self, indent: int = 2) -> str:

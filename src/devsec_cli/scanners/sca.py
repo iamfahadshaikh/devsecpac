@@ -3,7 +3,7 @@
 from pathlib import Path
 import json
 from .base import BaseScanner
-from ..contracts import ToolResult, StatusEnum, FindingCounts
+from ..contracts import ToolResult, StatusEnum, FindingCounts, FindingDetail
 from ..runner import ProcessRunner
 
 
@@ -26,6 +26,7 @@ class TrivyFSScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
         findings = FindingCounts()
+        items = []
         summary = "No filesystem vulnerabilities detected"
 
         if stdout.strip():
@@ -33,6 +34,7 @@ class TrivyFSScanner(BaseScanner):
                 data = json.loads(stdout)
                 results = data.get("Results", [])
                 for res in results:
+                    target_file = res.get("Target", "filesystem")
                     vulns = res.get("Vulnerabilities", [])
                     for v in vulns:
                         sev = v.get("Severity", "UNKNOWN").upper()
@@ -46,6 +48,25 @@ class TrivyFSScanner(BaseScanner):
                             findings.low += 1
                         else:
                             findings.info += 1
+
+                        cve_id = v.get("VulnerabilityID", "")
+                        pkg_name = v.get("PkgName", "")
+                        installed_ver = v.get("InstalledVersion", "")
+                        fixed_ver = v.get("FixedVersion", "")
+                        desc = f"{pkg_name} {installed_ver}"
+                        if fixed_ver:
+                            desc += f" -> fixed in {fixed_ver}"
+
+                        items.append(
+                            FindingDetail(
+                                severity=sev,
+                                tool=self.name,
+                                file=target_file,
+                                line="",
+                                rule=cve_id,
+                                description=desc
+                            )
+                        )
 
                 if findings.total > 0:
                     summary = (
@@ -64,7 +85,8 @@ class TrivyFSScanner(BaseScanner):
             exit_code=0,
             summary=summary,
             findings=findings,
-            duration_seconds=elapsed
+            duration_seconds=elapsed,
+            items=items
         )
 
 
@@ -88,6 +110,7 @@ class DependencyCheckScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
         findings = FindingCounts()
+        items = []
         status = StatusEnum.PASS
         summary = "No CVE vulnerabilities >= CVSS 7.0 detected"
 
@@ -97,17 +120,35 @@ class DependencyCheckScanner(BaseScanner):
                 data = json.loads(report_file.read_text(encoding="utf-8"))
                 dependencies = data.get("dependencies", [])
                 for dep in dependencies:
+                    file_name = dep.get("fileName", "unknown")
                     vulns = dep.get("vulnerabilities", [])
                     for v in vulns:
                         cvss_score = float(v.get("cvssv3", {}).get("baseScore", 0.0) or v.get("cvssv2", {}).get("score", 0.0))
+                        sev = "LOW"
                         if cvss_score >= 9.0:
                             findings.critical += 1
+                            sev = "CRITICAL"
                         elif cvss_score >= 7.0:
                             findings.high += 1
+                            sev = "HIGH"
                         elif cvss_score >= 4.0:
                             findings.medium += 1
+                            sev = "MEDIUM"
                         else:
                             findings.low += 1
+
+                        cve_name = v.get("name", "CVE")
+                        desc = v.get("description", "")[:100]
+                        items.append(
+                            FindingDetail(
+                                severity=sev,
+                                tool=self.name,
+                                file=file_name,
+                                line="",
+                                rule=cve_name,
+                                description=desc
+                            )
+                        )
 
                 if findings.has_blocking:
                     status = StatusEnum.FAIL
@@ -122,5 +163,6 @@ class DependencyCheckScanner(BaseScanner):
             exit_code=code,
             summary=summary,
             findings=findings,
-            duration_seconds=elapsed
+            duration_seconds=elapsed,
+            items=items
         )

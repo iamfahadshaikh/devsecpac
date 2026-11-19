@@ -3,7 +3,7 @@
 from pathlib import Path
 import json
 from .base import BaseScanner
-from ..contracts import ToolResult, StatusEnum, FindingCounts
+from ..contracts import ToolResult, StatusEnum, FindingCounts, FindingDetail
 from ..runner import ProcessRunner
 from ..discovery import TargetDiscovery
 
@@ -34,28 +34,50 @@ class CheckovScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
         findings = FindingCounts()
+        items = []
         summary = "No IaC security violations detected"
 
         if stdout.strip():
             try:
                 data = json.loads(stdout)
-                # Checkov can return a list or dict of reports
                 reports = data if isinstance(data, list) else [data]
                 for report in reports:
                     results = report.get("results", {})
                     failed_checks = results.get("failed_checks", [])
                     for check in failed_checks:
-                        severity = str(check.get("severity") or "").upper()
-                        if severity == "CRITICAL":
+                        raw_sev = str(check.get("severity") or "").upper()
+                        sev = "MEDIUM"
+                        if raw_sev == "CRITICAL":
                             findings.critical += 1
-                        elif severity == "HIGH":
+                            sev = "CRITICAL"
+                        elif raw_sev == "HIGH":
                             findings.high += 1
-                        elif severity == "MEDIUM":
+                            sev = "HIGH"
+                        elif raw_sev == "MEDIUM":
                             findings.medium += 1
-                        elif severity == "LOW":
+                            sev = "MEDIUM"
+                        elif raw_sev == "LOW":
                             findings.low += 1
+                            sev = "LOW"
                         else:
-                            findings.medium += 1  # Default unrated checkov failures to medium
+                            findings.medium += 1
+
+                        file_path = check.get("file_path", "unknown")
+                        line_range = check.get("file_line_range", [])
+                        line_str = f"{line_range[0]}-{line_range[1]}" if len(line_range) >= 2 else ""
+                        check_id = check.get("check_id", "CheckovRule")
+                        check_name = check.get("check_name", "")
+
+                        items.append(
+                            FindingDetail(
+                                severity=sev,
+                                tool=self.name,
+                                file=file_path.lstrip("/"),
+                                line=line_str,
+                                rule=check_id,
+                                description=check_name
+                            )
+                        )
 
                 if findings.total > 0:
                     summary = (
@@ -74,7 +96,8 @@ class CheckovScanner(BaseScanner):
             exit_code=0,
             summary=summary,
             findings=findings,
-            duration_seconds=elapsed
+            duration_seconds=elapsed,
+            items=items
         )
 
 
@@ -103,6 +126,7 @@ class KubeconformScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir))
 
         findings = FindingCounts()
+        items = []
         status = StatusEnum.PASS
         summary = f"Validated {len(k8s_files)} Kubernetes manifest(s) successfully"
 
@@ -116,6 +140,20 @@ class KubeconformScanner(BaseScanner):
                     findings.high = invalid_count + error_count
                     status = StatusEnum.FAIL
                     summary = f"Schema validation failed: {invalid_count} invalid, {error_count} errors"
+                    
+                    resources = data.get("resources", [])
+                    for res in resources:
+                        if res.get("status") in ("Invalid", "Error"):
+                            items.append(
+                                FindingDetail(
+                                    severity="HIGH",
+                                    tool=self.name,
+                                    file=res.get("filename", "k8s.yaml"),
+                                    line="",
+                                    rule="SchemaViolation",
+                                    description=res.get("msg", "Invalid resource definition")
+                                )
+                            )
             except Exception:
                 pass
 
@@ -126,5 +164,6 @@ class KubeconformScanner(BaseScanner):
             exit_code=code,
             summary=summary,
             findings=findings,
-            duration_seconds=elapsed
+            duration_seconds=elapsed,
+            items=items
         )

@@ -96,9 +96,10 @@ def run_scan(target_path: Path, output_json: Path, output_md: Path, strict: bool
                     )
                 )
 
-    # Reporting
+    # Reporting & Terminal Output
     reporter = Reporter(console)
     reporter.print_terminal_table(results)
+    reporter.print_findings_drilldown(results)
     reporter.generate_markdown_summary(results, output_md)
     reporter.export_json_report(results, output_json)
 
@@ -109,12 +110,20 @@ def run_scan(target_path: Path, output_json: Path, output_md: Path, strict: bool
     total_crit = sum(r.findings.critical for r in results)
     total_high = sum(r.findings.high for r in results)
     total_med = sum(r.findings.medium for r in results)
+    total_low = sum(r.findings.low for r in results)
 
     if (total_crit + total_high) > 0 or (strict and total_med > 0):
-        console.print("[bold red]❌ Quality Gate FAILED (High/Critical issues detected)![/bold red]\n")
+        console.print(
+            f"[bold red]❌ Quality Gate FAILED[/bold red] "
+            f"([bold red]{total_crit} Critical[/bold red], [red]{total_high} High[/red], "
+            f"[yellow]{total_med} Med[/yellow], [blue]{total_low} Low[/blue] issues detected)!\n"
+        )
         return 1
     else:
-        console.print("[bold green]✅ Quality Gate PASSED![/bold green]\n")
+        console.print(
+            f"[bold green]✅ Quality Gate PASSED[/bold green] "
+            f"(0 Critical, 0 High issues detected; [yellow]{total_med} Med[/yellow], [blue]{total_low} Low[/blue])!\n"
+        )
         return 0
 
 
