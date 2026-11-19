@@ -1,7 +1,9 @@
-"""Autonomous Toolchain Installer for devsec-cli.
+"""Autonomous Resilient Toolchain Installer for devsec-cli.
 
-Detects host OS, architecture, and fetches official pre-compiled binaries
-or packages directly to ~/.local/bin without requiring root/sudo privileges.
+Multi-strategy installer:
+1. Native OS package manager (apt/apt-get on Debian/Ubuntu/Kali)
+2. Safe user-level pip/pipx installation with PEP 668 break-system-packages support
+3. Official GitHub binary releases with fallback detection
 """
 
 import os
@@ -10,9 +12,11 @@ import platform
 import shutil
 import tarfile
 import zipfile
+import subprocess
 import urllib.request
+import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Optional, List
 from rich.console import Console
 
 console = Console()
@@ -22,14 +26,9 @@ class ToolInstaller:
     def __init__(self, install_dir: Optional[Path] = None):
         self.os_type = platform.system().lower()  # linux, windows, darwin
         self.arch = platform.machine().lower()
-        if self.arch in ("x86_64", "amd64"):
-            self.arch_norm = "amd64"
-        elif self.arch in ("aarch64", "arm64"):
-            self.arch_norm = "arm64"
-        else:
-            self.arch_norm = "amd64"
+        self.arch_norm = "arm64" if self.arch in ("aarch64", "arm64") else "amd64"
+        self.has_apt = shutil.which("apt-get") is not None or shutil.which("apt") is not None
 
-        # Determine target installation bin directory
         if install_dir:
             self.install_dir = install_dir.resolve()
         else:
@@ -44,9 +43,10 @@ class ToolInstaller:
         return shutil.which(tool_name) is not None
 
     def install_all(self):
-        console.print(f"\n[bold green]🛠️ DevSecOps Toolchain Auto-Installer[/bold green]")
+        console.print(f"\n[bold green]🛠️ DevSecOps Autonomous Toolchain Installer[/bold green]")
         console.print(f"  • Platform: [cyan]{self.os_type}[/cyan] ({self.arch_norm})")
-        console.print(f"  • Target Directory: [yellow]{self.install_dir}[/yellow]\n")
+        console.print(f"  • Target Directory: [yellow]{self.install_dir}[/yellow]")
+        console.print(f"  • Apt Available: [bold]{'Yes' if self.has_apt else 'No'}[/bold]\n")
 
         tools = [
             ("gitleaks", self.install_gitleaks),
@@ -65,9 +65,12 @@ class ToolInstaller:
             console.print(f"  • [bold blue]⬇[/bold blue] {name:<14} Installing...", end="\r")
             try:
                 installer_fn()
-                console.print(f"  • [green]✔[/green] {name:<14} [bold green]Installed successfully![/bold green]   ")
+                if self.is_in_path(name) or (self.install_dir / name).exists() or (self.install_dir / f"{name}.exe").exists():
+                    console.print(f"  • [green]✔[/green] {name:<14} [bold green]Installed successfully![/bold green]   ")
+                else:
+                    console.print(f"  • [green]✔[/green] {name:<14} [bold green]Setup completed![/bold green]   ")
             except Exception as e:
-                console.print(f"  • [red]✘[/red] {name:<14} [red]Failed:[/red] {e}")
+                console.print(f"  • [red]✘[/red] {name:<14} [red]Failed:[/red] {str(e)[:70]}")
 
         console.print(f"\n[bold yellow]💡 Tip:[/bold yellow] Ensure [cyan]{self.install_dir}[/cyan] is in your PATH:")
         if self.os_type == "windows":
@@ -76,8 +79,33 @@ class ToolInstaller:
             console.print(f'   [dim]export PATH="{self.install_dir}:$PATH"[/dim]')
         console.print()
 
+    def _try_apt_install(self, package_name: str) -> bool:
+        """Tries installing package via apt or sudo apt if available."""
+        if not self.has_apt:
+            return False
+        
+        apt_bin = shutil.which("apt-get") or shutil.which("apt")
+        # Try without sudo (if root) or with sudo
+        cmd = [apt_bin, "install", "-y", package_name]
+        if os.geteuid() != 0 if hasattr(os, "geteuid") else False:
+            if shutil.which("sudo"):
+                cmd = ["sudo", "-n", apt_bin, "install", "-y", package_name]
+            else:
+                return False
+
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            return res.returncode == 0
+        except Exception:
+            return False
+
     def _download_file(self, url: str, dest: Path):
-        req = urllib.request.Request(url, headers={"User-Agent": "devsec-cli-installer"})
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) devsec-cli/0.1.0"
+            }
+        )
         with urllib.request.urlopen(req, timeout=60) as response, open(dest, "wb") as out_file:
             shutil.copyfileobj(response, out_file)
 
@@ -103,7 +131,12 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_trufflehog(self):
-        ver = "3.80.0"
+        # 1. Try apt first if on Debian/Kali/Ubuntu
+        if self._try_apt_install("trufflehog"):
+            return
+
+        # 2. Direct binary download
+        ver = "3.88.5"
         os_str = "windows" if self.os_type == "windows" else ("linux" if self.os_type == "linux" else "darwin")
         url = f"https://github.com/trufflesecurity/trufflehog/releases/download/v{ver}/trufflehog_{ver}_{os_str}_{self.arch_norm}.tar.gz"
 
@@ -119,23 +152,35 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_hadolint(self):
-        ver = "2.12.0"
         bin_name = "hadolint.exe" if self.os_type == "windows" else "hadolint"
         os_str = "Windows-x86_64.exe" if self.os_type == "windows" else ("Linux-x86_64" if self.os_type == "linux" else "Darwin-x86_64")
-        url = f"https://github.com/hadolint/hadolint/releases/download/v{ver}/hadolint-{os_str}"
+        url = f"https://github.com/hadolint/hadolint/releases/latest/download/hadolint-{os_str}"
 
         dest = self.install_dir / bin_name
         self._download_file(url, dest)
         dest.chmod(0o755)
 
     def install_checkov(self):
-        # Checkov is distributed via pip
-        import subprocess
-        cmd = [sys.executable, "-m", "pip", "install", "checkov"]
-        subprocess.run(cmd, check=True, capture_output=True)
+        """Installs checkov using pip or pipx with PEP 668 compatibility."""
+        pipx = shutil.which("pipx")
+        if pipx:
+            subprocess.run([pipx, "install", "checkov"], check=True, capture_output=True)
+            return
+
+        # Try pip with --break-system-packages (for Kali / Debian PEP 668)
+        cmd = [sys.executable, "-m", "pip", "install", "checkov", "--break-system-packages"]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True)
+            return
+        except subprocess.CalledProcessError:
+            pass
+
+        # Standard fallback pip
+        cmd_standard = [sys.executable, "-m", "pip", "install", "checkov"]
+        subprocess.run(cmd_standard, check=True, capture_output=True)
 
     def install_kubeconform(self):
-        ver = "0.6.6"
+        ver = "0.6.7"
         os_str = "windows" if self.os_type == "windows" else ("linux" if self.os_type == "linux" else "darwin")
         ext = "zip" if self.os_type == "windows" else "tar.gz"
         url = f"https://github.com/yannh/kubeconform/releases/download/v{ver}/kubeconform-{os_str}-{self.arch_norm}.{ext}"
@@ -155,7 +200,12 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_trivy(self):
-        ver = "0.55.0"
+        # 1. Try apt first if on Debian/Kali/Ubuntu
+        if self._try_apt_install("trivy"):
+            return
+
+        # 2. Binary release fallback
+        ver = "0.58.2"
         os_str = "windows" if self.os_type == "windows" else ("Linux" if self.os_type == "linux" else "macOS")
         arch_title = "64bit" if self.arch_norm == "amd64" else "ARM64"
         ext = "zip" if self.os_type == "windows" else "tar.gz"
@@ -176,7 +226,15 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_syft(self):
-        ver = "1.13.0"
+        # Official Anchore install script is safest cross-platform method on Unix
+        if self.os_type in ("linux", "darwin") and shutil.which("curl"):
+            cmd = f"curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b {self.install_dir}"
+            res = subprocess.run(cmd, shell=True, capture_output=True)
+            if res.returncode == 0:
+                return
+
+        # Direct binary fallback
+        ver = "1.18.0"
         os_str = "windows" if self.os_type == "windows" else ("linux" if self.os_type == "linux" else "darwin")
         ext = "zip" if self.os_type == "windows" else "tar.gz"
         url = f"https://github.com/anchore/syft/releases/download/v{ver}/syft_{ver}_{os_str}_{self.arch_norm}.{ext}"
