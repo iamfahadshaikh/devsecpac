@@ -13,8 +13,12 @@ from .installer import ToolInstaller
 from .scanners.secrets import GitleaksScanner, TruffleHogScanner
 from .scanners.docker import HadolintScanner
 from .scanners.iac import CheckovScanner, KubeconformScanner
+from .scanners.kyverno import KyvernoScanner
+from .scanners.codeql import CodeQLScanner
+from .scanners.sonar import SonarQubeScanner
 from .scanners.sca import TrivyFSScanner, DependencyCheckScanner
 from .scanners.sbom import SyftScanner
+from .scanners.dast import OWASPZAPScanner
 from .scanners.k8s_audit import K8sStructuralAuditScanner
 
 
@@ -26,11 +30,15 @@ def build_scanners():
         GitleaksScanner(),
         TruffleHogScanner(),
         HadolintScanner(),
+        CodeQLScanner(),
+        SonarQubeScanner(),
         CheckovScanner(),
         KubeconformScanner(),
+        KyvernoScanner(),
         TrivyFSScanner(),
         DependencyCheckScanner(),
         SyftScanner(),
+        OWASPZAPScanner(),
         K8sStructuralAuditScanner(),
     ]
 
@@ -38,12 +46,13 @@ def build_scanners():
 def run_info():
     """Prints diagnostic information about available security tools on the current host."""
     scanners = build_scanners()
-    console.print("\n[bold cyan]🔧 DevSecOps Host Binary Detection Status[/bold cyan]\n")
+    console.print("\n[bold cyan]🔧 DevSecOps Host Binary Detection Status (14 Engines)[/bold cyan]\n")
     for s in scanners:
         if s.binary_name is None:
             console.print(f"  • [green]✔[/green] {s.name:<32} (Native Python Engine)")
-        elif s.binary_path:
-            console.print(f"  • [green]✔[/green] {s.name:<32} Found: [dim]{s.binary_path}[/dim]")
+        elif s.binary_path or s.is_tool_available():
+            found_path = s.binary_path or "Available (Container/CLI)"
+            console.print(f"  • [green]✔[/green] {s.name:<32} Found: [dim]{found_path}[/dim]")
         else:
             console.print(f"  • [yellow]✘[/yellow] {s.name:<32} [dim]Missing '{s.binary_name}' in PATH (will gracefully SKIP)[/dim]")
     console.print()
@@ -69,12 +78,14 @@ def run_scan(target_path: Path, output_json: Path, output_md: Path, strict: bool
     dockerfiles = discovery.discover_dockerfiles()
     k8s = discovery.discover_k8s_manifests()
     iac = discovery.discover_iac_files()
+    compose = discovery.discover_compose_files()
 
     console.print(f"  📁 Target is Git repo: [bold]{'Yes' if discovery.is_git_repo() else 'No'}[/bold]")
     console.print(f"  📦 Detected Runtimes: [bold]{', '.join(languages.keys()) if languages else 'None'}[/bold]")
     console.print(f"  🐳 Dockerfiles found: [bold]{len(dockerfiles)}[/bold]")
     console.print(f"  ☸️  Kubernetes manifests: [bold]{len(k8s)}[/bold]")
     console.print(f"  🏗️  IaC files found: [bold]{len(iac)}[/bold]")
+    console.print(f"  🌐 Compose files found: [bold]{len(compose)}[/bold]")
     console.print()
 
     scanners = build_scanners()

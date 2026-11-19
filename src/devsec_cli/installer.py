@@ -56,21 +56,25 @@ class ToolInstaller:
             ("kubeconform", self.install_kubeconform),
             ("trivy", self.install_trivy),
             ("syft", self.install_syft),
+            ("kyverno", self.install_kyverno),
+            ("codeql", self.install_codeql),
+            ("sonar-scanner", self.install_sonar),
+            ("dependency-check", self.install_dependency_check),
         ]
 
         for name, installer_fn in tools:
             if self.is_in_path(name):
-                console.print(f"  • [green]✔[/green] {name:<14} Already installed in PATH.")
+                console.print(f"  • [green]✔[/green] {name:<18} Already installed in PATH.")
                 continue
-            console.print(f"  • [bold blue]⬇[/bold blue] {name:<14} Installing...", end="\r")
+            console.print(f"  • [bold blue]⬇[/bold blue] {name:<18} Installing...", end="\r")
             try:
                 installer_fn()
                 if self.is_in_path(name) or (self.install_dir / name).exists() or (self.install_dir / f"{name}.exe").exists():
-                    console.print(f"  • [green]✔[/green] {name:<14} [bold green]Installed successfully![/bold green]   ")
+                    console.print(f"  • [green]✔[/green] {name:<18} [bold green]Installed successfully![/bold green]   ")
                 else:
-                    console.print(f"  • [green]✔[/green] {name:<14} [bold green]Setup completed![/bold green]   ")
+                    console.print(f"  • [green]✔[/green] {name:<18} [bold green]Setup completed![/bold green]   ")
             except Exception as e:
-                console.print(f"  • [red]✘[/red] {name:<14} [red]Failed:[/red] {str(e)[:70]}")
+                console.print(f"  • [red]✘[/red] {name:<18} [red]Failed:[/red] {str(e)[:70]}")
 
         console.print(f"\n[bold yellow]💡 Tip:[/bold yellow] Ensure [cyan]{self.install_dir}[/cyan] is in your PATH:")
         if self.os_type == "windows":
@@ -85,7 +89,6 @@ class ToolInstaller:
             return False
         
         apt_bin = shutil.which("apt-get") or shutil.which("apt")
-        # Try without sudo (if root) or with sudo
         cmd = [apt_bin, "install", "-y", package_name]
         if os.geteuid() != 0 if hasattr(os, "geteuid") else False:
             if shutil.which("sudo"):
@@ -106,7 +109,7 @@ class ToolInstaller:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) devsec-cli/0.1.0"
             }
         )
-        with urllib.request.urlopen(req, timeout=60) as response, open(dest, "wb") as out_file:
+        with urllib.request.urlopen(req, timeout=180) as response, open(dest, "wb") as out_file:
             shutil.copyfileobj(response, out_file)
 
     def install_gitleaks(self):
@@ -131,11 +134,8 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_trufflehog(self):
-        # 1. Try apt first if on Debian/Kali/Ubuntu
         if self._try_apt_install("trufflehog"):
             return
-
-        # 2. Direct binary download
         ver = "3.88.5"
         os_str = "windows" if self.os_type == "windows" else ("linux" if self.os_type == "linux" else "darwin")
         url = f"https://github.com/trufflesecurity/trufflehog/releases/download/v{ver}/trufflehog_{ver}_{os_str}_{self.arch_norm}.tar.gz"
@@ -161,13 +161,11 @@ class ToolInstaller:
         dest.chmod(0o755)
 
     def install_checkov(self):
-        """Installs checkov using pip or pipx with PEP 668 compatibility."""
         pipx = shutil.which("pipx")
         if pipx:
             subprocess.run([pipx, "install", "checkov"], check=True, capture_output=True)
             return
 
-        # Try pip with --break-system-packages (for Kali / Debian PEP 668)
         cmd = [sys.executable, "-m", "pip", "install", "checkov", "--break-system-packages"]
         try:
             subprocess.run(cmd, check=True, capture_output=True)
@@ -175,7 +173,6 @@ class ToolInstaller:
         except subprocess.CalledProcessError:
             pass
 
-        # Standard fallback pip
         cmd_standard = [sys.executable, "-m", "pip", "install", "checkov"]
         subprocess.run(cmd_standard, check=True, capture_output=True)
 
@@ -200,11 +197,8 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_trivy(self):
-        # 1. Try apt first if on Debian/Kali/Ubuntu
         if self._try_apt_install("trivy"):
             return
-
-        # 2. Binary release fallback
         ver = "0.58.2"
         os_str = "windows" if self.os_type == "windows" else ("Linux" if self.os_type == "linux" else "macOS")
         arch_title = "64bit" if self.arch_norm == "amd64" else "ARM64"
@@ -226,14 +220,12 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_syft(self):
-        # Official Anchore install script is safest cross-platform method on Unix
         if self.os_type in ("linux", "darwin") and shutil.which("curl"):
             cmd = f"curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b {self.install_dir}"
             res = subprocess.run(cmd, shell=True, capture_output=True)
             if res.returncode == 0:
                 return
 
-        # Direct binary fallback
         ver = "1.18.0"
         os_str = "windows" if self.os_type == "windows" else ("linux" if self.os_type == "linux" else "darwin")
         ext = "zip" if self.os_type == "windows" else "tar.gz"
@@ -252,3 +244,94 @@ class ToolInstaller:
                         t.extract(member, self.install_dir)
                         (self.install_dir / "syft").chmod(0o755)
         tmp_archive.unlink(missing_ok=True)
+
+    def install_kyverno(self):
+        """Installs Kyverno CLI binary."""
+        ver = "1.12.5"
+        ext = "zip" if self.os_type == "windows" else "tar.gz"
+        os_str = "windows" if self.os_type == "windows" else ("linux" if self.os_type == "linux" else "darwin")
+        arch_str = "x86_64" if self.arch_norm == "amd64" else "arm64"
+        url = f"https://github.com/kyverno/kyverno/releases/download/v{ver}/kyverno-cli_v{ver}_{os_str}_{arch_str}.{ext}"
+
+        tmp_archive = self.install_dir / f"kyverno_tmp.{ext}"
+        self._download_file(url, tmp_archive)
+
+        if ext == "zip":
+            with zipfile.ZipFile(tmp_archive, "r") as z:
+                z.extract("kyverno.exe", self.install_dir)
+        else:
+            with tarfile.open(tmp_archive, "r:gz") as t:
+                for member in t.getmembers():
+                    if member.name == "kyverno":
+                        t.extract(member, self.install_dir)
+                        (self.install_dir / "kyverno").chmod(0o755)
+        tmp_archive.unlink(missing_ok=True)
+
+    def install_codeql(self):
+        """Installs GitHub CodeQL bundle binary."""
+        os_str = "win64" if self.os_type == "windows" else ("linux64" if self.os_type == "linux" else "osx64")
+        url = f"https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-{os_str}.zip"
+
+        tmp_zip = self.install_dir / "codeql_tmp.zip"
+        self._download_file(url, tmp_zip)
+
+        with zipfile.ZipFile(tmp_zip, "r") as z:
+            z.extractall(self.install_dir)
+
+        # Symlink or link codeql binary to install_dir
+        bin_sub = self.install_dir / "codeql" / ("codeql.exe" if self.os_type == "windows" else "codeql")
+        if bin_sub.exists():
+            dest_bin = self.install_dir / ("codeql.exe" if self.os_type == "windows" else "codeql")
+            if not dest_bin.exists():
+                try:
+                    os.symlink(bin_sub, dest_bin)
+                except Exception:
+                    shutil.copy2(bin_sub, dest_bin)
+            dest_bin.chmod(0o755)
+        tmp_zip.unlink(missing_ok=True)
+
+    def install_sonar(self):
+        """Installs SonarScanner CLI."""
+        ver = "6.2.1.4610"
+        os_str = "windows-x64" if self.os_type == "windows" else ("linux-x64" if self.os_type == "linux" else "macosx-x64")
+        url = f"https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-{ver}-{os_str}.zip"
+
+        tmp_zip = self.install_dir / "sonar_tmp.zip"
+        self._download_file(url, tmp_zip)
+
+        with zipfile.ZipFile(tmp_zip, "r") as z:
+            z.extractall(self.install_dir)
+
+        scanner_dir = self.install_dir / f"sonar-scanner-{ver}-{os_str}"
+        bin_sub = scanner_dir / "bin" / ("sonar-scanner.bat" if self.os_type == "windows" else "sonar-scanner")
+        if bin_sub.exists():
+            dest_bin = self.install_dir / ("sonar-scanner.bat" if self.os_type == "windows" else "sonar-scanner")
+            if not dest_bin.exists():
+                try:
+                    os.symlink(bin_sub, dest_bin)
+                except Exception:
+                    shutil.copy2(bin_sub, dest_bin)
+            dest_bin.chmod(0o755)
+        tmp_zip.unlink(missing_ok=True)
+
+    def install_dependency_check(self):
+        """Installs OWASP Dependency-Check CLI."""
+        ver = "12.1.0"
+        url = f"https://github.com/jeremylong/DependencyCheck/releases/download/v{ver}/dependency-check-{ver}-release.zip"
+
+        tmp_zip = self.install_dir / "dc_tmp.zip"
+        self._download_file(url, tmp_zip)
+
+        with zipfile.ZipFile(tmp_zip, "r") as z:
+            z.extractall(self.install_dir)
+
+        bin_sub = self.install_dir / "dependency-check" / "bin" / ("dependency-check.bat" if self.os_type == "windows" else "dependency-check.sh")
+        if bin_sub.exists():
+            dest_bin = self.install_dir / ("dependency-check.bat" if self.os_type == "windows" else "dependency-check")
+            if not dest_bin.exists():
+                try:
+                    os.symlink(bin_sub, dest_bin)
+                except Exception:
+                    shutil.copy2(bin_sub, dest_bin)
+            dest_bin.chmod(0o755)
+        tmp_zip.unlink(missing_ok=True)
