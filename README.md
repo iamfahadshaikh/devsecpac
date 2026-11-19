@@ -1,12 +1,14 @@
-# 🛡️ devsec-cli: Universal Autonomous DevSecOps Scanner
+# 🛡️ devsecpac: Universal Autonomous DevSecOps Scanner
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![Platform: Windows | Linux | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-green.svg)](#)
 
-A cross-platform Python CLI package that scans any codebase, container, and infrastructure configuration across multiple security dimensions with a single command:
+A cross-platform Python CLI package that scans any codebase, container, and infrastructure configuration across 14 security dimensions with a single command:
 
 ```bash
+devsecpac scan .
+# or
 devsec scan .
 ```
 

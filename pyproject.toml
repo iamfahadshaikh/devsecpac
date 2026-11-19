@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "devsec-cli"
-version = "0.1.0"
+name = "devsecpac"
+version = "1.0.0"
 description = "Universal Autonomous DevSecOps Scanner Orchestrator"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -50,6 +50,7 @@ dev = [
 
 [project.scripts]
 devsec = "devsec_cli.cli:main"
+devsecpac = "devsec_cli.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
