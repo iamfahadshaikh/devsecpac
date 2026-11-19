@@ -55,17 +55,29 @@ Outputs which scanners are installed on your PATH and ready to run.
 
 ### 2. Scan the Current Directory
 ```bash
-devsec scan .
+devsecpac scan .
 ```
 
-### 3. Scan with Custom Report Outputs
+### 3. Scan Any Remote Git Repository (GitHub, GitLab, Azure DevOps, Bitbucket)
 ```bash
-devsec scan /path/to/repo --json my-report.json --md executive-summary.md
+# Public repository via HTTPS (Full Git history across all branches)
+devsecpac scan -r https://github.com/octocat/Hello-World.git
+
+# Enterprise / Private repo via SSH
+devsecpac scan -r git@gitlab.com:org/payment-service.git
+
+# Azure DevOps / Private repo with PAT (zero process-table leakage)
+devsecpac scan -r https://dev.azure.com/org/proj/_git/repo --token $AZURE_PAT --branch main
 ```
 
-### 4. Strict Quality Gate (Fail on Medium issues too)
+### 4. Scan with Custom Report Outputs
 ```bash
-devsec scan . --strict
+devsecpac scan /path/to/repo --json my-report.json --md executive-summary.md
+```
+
+### 5. Strict Quality Gate (Fail on Medium issues too)
+```bash
+devsecpac scan -r https://github.com/org/repo.git --strict
 ```
 
 ---

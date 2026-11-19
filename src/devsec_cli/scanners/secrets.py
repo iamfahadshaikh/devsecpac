@@ -16,18 +16,20 @@ class GitleaksScanner(BaseScanner):
             return self.create_skipped_result("gitleaks binary not found in PATH")
 
         report_file = target_dir / ".gitleaks_report.json"
+        is_git = (target_dir / ".git").is_dir()
+
         cmd = [
             str(self.binary_path),
             "detect",
             "--source", str(target_dir),
             "--report-format", "json",
             "--report-path", str(report_file),
-            "--exit-code", "0",
-            "--no-git" if not (target_dir / ".git").is_dir() else ""
+            "--exit-code", "0"
         ]
-        cmd = [c for c in cmd if c]
+        if not is_git:
+            cmd.append("--no-git")
 
-        code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir))
+        code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
         findings = FindingCounts()
         items = []
@@ -47,6 +49,10 @@ class GitleaksScanner(BaseScanner):
                         line_no = str(finding.get("StartLine", ""))
                         rule_id = finding.get("RuleID", "Secret")
                         desc = finding.get("Description", rule_id)
+                        commit_hash = finding.get("Commit", "")
+                        if commit_hash:
+                            desc += f" (commit {commit_hash[:8]})"
+
                         items.append(
                             FindingDetail(
                                 severity="HIGH",
@@ -82,15 +88,29 @@ class TruffleHogScanner(BaseScanner):
         if not self.is_tool_available():
             return self.create_skipped_result("trufflehog binary not found in PATH")
 
-        cmd = [
-            str(self.binary_path),
-            "filesystem",
-            str(target_dir),
-            "--json",
-            "--only-verified"
-        ]
+        is_git = (target_dir / ".git").is_dir()
 
-        code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir))
+        # If git repo, scan git history right from root commit to latest
+        if is_git:
+            # TruffleHog git file://
+            uri = target_dir.as_uri()
+            cmd = [
+                str(self.binary_path),
+                "git",
+                uri,
+                "--json",
+                "--only-verified"
+            ]
+        else:
+            cmd = [
+                str(self.binary_path),
+                "filesystem",
+                str(target_dir),
+                "--json",
+                "--only-verified"
+            ]
+
+        code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
         findings = FindingCounts()
         items = []
@@ -104,10 +124,19 @@ class TruffleHogScanner(BaseScanner):
                 item = json.loads(line)
                 if item.get("Verified", False):
                     verified_count += 1
-                    source_meta = item.get("SourceMetadata", {}).get("Data", {}).get("Filesystem", {})
-                    file_path = source_meta.get("file", "unknown")
-                    line_no = str(source_meta.get("line", ""))
+                    source_meta = item.get("SourceMetadata", {}).get("Data", {})
+                    # Handle Git source vs Filesystem source metadata
+                    git_meta = source_meta.get("Git", {})
+                    fs_meta = source_meta.get("Filesystem", {})
+
+                    file_path = git_meta.get("file") or fs_meta.get("file") or "unknown"
+                    line_no = str(git_meta.get("line") or fs_meta.get("line") or "")
+                    commit_hash = git_meta.get("commit", "")
                     detector = item.get("DetectorName", "VerifiedSecret")
+                    desc = f"Verified {detector} credential"
+                    if commit_hash:
+                        desc += f" (in commit {commit_hash[:8]})"
+
                     items.append(
                         FindingDetail(
                             severity="CRITICAL",
@@ -115,7 +144,7 @@ class TruffleHogScanner(BaseScanner):
                             file=file_path,
                             line=line_no,
                             rule=detector,
-                            description=f"Verified {detector} secret credential"
+                            description=desc
                         )
                     )
             except Exception:
