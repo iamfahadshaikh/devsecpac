@@ -3,7 +3,7 @@
 Multi-strategy installer:
 1. Native OS package manager (apt/apt-get on Debian/Ubuntu/Kali)
 2. Safe user-level pip/pipx installation with PEP 668 break-system-packages support
-3. Official GitHub binary releases with fallback detection
+3. Official GitHub binary releases with isolated wrapper scripts
 """
 
 import os
@@ -31,16 +31,27 @@ class ToolInstaller:
 
         if install_dir:
             self.install_dir = install_dir.resolve()
+            self.opt_dir = self.install_dir.parent / "opt"
         else:
             if self.os_type == "windows":
-                self.install_dir = Path(os.environ.get("USERPROFILE", ".")) / ".local" / "bin"
+                base = Path(os.environ.get("USERPROFILE", ".")) / ".local"
+                self.install_dir = base / "bin"
+                self.opt_dir = base / "opt"
             else:
-                self.install_dir = Path.home() / ".local" / "bin"
+                base = Path.home() / ".local"
+                self.install_dir = base / "bin"
+                self.opt_dir = base / "opt"
 
         self.install_dir.mkdir(parents=True, exist_ok=True)
+        self.opt_dir.mkdir(parents=True, exist_ok=True)
 
     def is_in_path(self, tool_name: str) -> bool:
-        return shutil.which(tool_name) is not None
+        bin_path = shutil.which(tool_name)
+        if bin_path and Path(bin_path).is_file():
+            return True
+        # Also check directly in install_dir
+        local_bin = self.install_dir / (f"{tool_name}.exe" if self.os_type == "windows" else tool_name)
+        return local_bin.is_file() and os.access(local_bin, os.X_OK)
 
     def install_all(self):
         console.print(f"\n[bold green]🛠️ DevSecOps Autonomous Toolchain Installer[/bold green]")
@@ -69,7 +80,7 @@ class ToolInstaller:
             console.print(f"  • [bold blue]⬇[/bold blue] {name:<18} Installing...", end="\r")
             try:
                 installer_fn()
-                if self.is_in_path(name) or (self.install_dir / name).exists() or (self.install_dir / f"{name}.exe").exists():
+                if self.is_in_path(name):
                     console.print(f"  • [green]✔[/green] {name:<18} [bold green]Installed successfully![/bold green]   ")
                 else:
                     console.print(f"  • [green]✔[/green] {name:<18} [bold green]Setup completed![/bold green]   ")
@@ -84,10 +95,8 @@ class ToolInstaller:
         console.print()
 
     def _try_apt_install(self, package_name: str) -> bool:
-        """Tries installing package via apt or sudo apt if available."""
         if not self.has_apt:
             return False
-        
         apt_bin = shutil.which("apt-get") or shutil.which("apt")
         cmd = [apt_bin, "install", "-y", package_name]
         if os.geteuid() != 0 if hasattr(os, "geteuid") else False:
@@ -95,7 +104,6 @@ class ToolInstaller:
                 cmd = ["sudo", "-n", apt_bin, "install", "-y", package_name]
             else:
                 return False
-
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
             return res.returncode == 0
@@ -246,7 +254,6 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_kyverno(self):
-        """Installs Kyverno CLI binary."""
         ver = "1.12.5"
         ext = "zip" if self.os_type == "windows" else "tar.gz"
         os_str = "windows" if self.os_type == "windows" else ("linux" if self.os_type == "linux" else "darwin")
@@ -268,70 +275,91 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_codeql(self):
-        """Installs GitHub CodeQL bundle binary."""
+        """Installs CodeQL into opt/codeql and creates a clean executable wrapper."""
         os_str = "win64" if self.os_type == "windows" else ("linux64" if self.os_type == "linux" else "osx64")
         url = f"https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-{os_str}.zip"
 
-        tmp_zip = self.install_dir / "codeql_tmp.zip"
+        codeql_opt = self.opt_dir / "codeql"
+        if codeql_opt.exists():
+            shutil.rmtree(codeql_opt, ignore_errors=True)
+
+        tmp_zip = self.opt_dir / "codeql_tmp.zip"
         self._download_file(url, tmp_zip)
 
         with zipfile.ZipFile(tmp_zip, "r") as z:
-            z.extractall(self.install_dir)
-
-        # Symlink or link codeql binary to install_dir
-        bin_sub = self.install_dir / "codeql" / ("codeql.exe" if self.os_type == "windows" else "codeql")
-        if bin_sub.exists():
-            dest_bin = self.install_dir / ("codeql.exe" if self.os_type == "windows" else "codeql")
-            if not dest_bin.exists():
-                try:
-                    os.symlink(bin_sub, dest_bin)
-                except Exception:
-                    shutil.copy2(bin_sub, dest_bin)
-            dest_bin.chmod(0o755)
+            z.extractall(self.opt_dir)
         tmp_zip.unlink(missing_ok=True)
 
+        # Remove any lingering directory named codeql in ~/.local/bin
+        legacy_dir = self.install_dir / "codeql"
+        if legacy_dir.is_dir():
+            shutil.rmtree(legacy_dir, ignore_errors=True)
+        elif legacy_dir.is_file():
+            legacy_dir.unlink(missing_ok=True)
+
+        real_bin = self.opt_dir / "codeql" / ("codeql.exe" if self.os_type == "windows" else "codeql")
+        real_bin.chmod(0o755)
+
+        # Create wrapper in bin/
+        if self.os_type == "windows":
+            wrapper = self.install_dir / "codeql.cmd"
+            wrapper.write_text(f'@echo off\n"{real_bin}" %*\n', encoding="utf-8")
+        else:
+            wrapper = self.install_dir / "codeql"
+            wrapper.write_text(f'#!/bin/sh\nexec "{real_bin}" "$@"\n', encoding="utf-8")
+            wrapper.chmod(0o755)
+
     def install_sonar(self):
-        """Installs SonarScanner CLI."""
         ver = "6.2.1.4610"
         os_str = "windows-x64" if self.os_type == "windows" else ("linux-x64" if self.os_type == "linux" else "macosx-x64")
         url = f"https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-{ver}-{os_str}.zip"
 
-        tmp_zip = self.install_dir / "sonar_tmp.zip"
-        self._download_file(url, tmp_zip)
+        sonar_dir = self.opt_dir / f"sonar-scanner-{ver}-{os_str}"
+        if not sonar_dir.exists():
+            tmp_zip = self.opt_dir / "sonar_tmp.zip"
+            self._download_file(url, tmp_zip)
+            with zipfile.ZipFile(tmp_zip, "r") as z:
+                z.extractall(self.opt_dir)
+            tmp_zip.unlink(missing_ok=True)
 
-        with zipfile.ZipFile(tmp_zip, "r") as z:
-            z.extractall(self.install_dir)
+        real_bin = sonar_dir / "bin" / ("sonar-scanner.bat" if self.os_type == "windows" else "sonar-scanner")
+        real_bin.chmod(0o755)
 
-        scanner_dir = self.install_dir / f"sonar-scanner-{ver}-{os_str}"
-        bin_sub = scanner_dir / "bin" / ("sonar-scanner.bat" if self.os_type == "windows" else "sonar-scanner")
-        if bin_sub.exists():
-            dest_bin = self.install_dir / ("sonar-scanner.bat" if self.os_type == "windows" else "sonar-scanner")
-            if not dest_bin.exists():
-                try:
-                    os.symlink(bin_sub, dest_bin)
-                except Exception:
-                    shutil.copy2(bin_sub, dest_bin)
-            dest_bin.chmod(0o755)
-        tmp_zip.unlink(missing_ok=True)
+        if self.os_type == "windows":
+            wrapper = self.install_dir / "sonar-scanner.cmd"
+            wrapper.write_text(f'@echo off\n"{real_bin}" %*\n', encoding="utf-8")
+        else:
+            wrapper = self.install_dir / "sonar-scanner"
+            wrapper.write_text(f'#!/bin/sh\nexec "{real_bin}" "$@"\n', encoding="utf-8")
+            wrapper.chmod(0o755)
 
     def install_dependency_check(self):
-        """Installs OWASP Dependency-Check CLI."""
+        """Installs OWASP Dependency-Check into opt/ and creates a clean executable wrapper."""
         ver = "12.1.0"
         url = f"https://github.com/jeremylong/DependencyCheck/releases/download/v{ver}/dependency-check-{ver}-release.zip"
 
-        tmp_zip = self.install_dir / "dc_tmp.zip"
-        self._download_file(url, tmp_zip)
+        dc_opt = self.opt_dir / "dependency-check"
+        if not dc_opt.exists():
+            tmp_zip = self.opt_dir / "dc_tmp.zip"
+            self._download_file(url, tmp_zip)
+            with zipfile.ZipFile(tmp_zip, "r") as z:
+                z.extractall(self.opt_dir)
+            tmp_zip.unlink(missing_ok=True)
 
-        with zipfile.ZipFile(tmp_zip, "r") as z:
-            z.extractall(self.install_dir)
+        # Remove any lingering directory named dependency-check in ~/.local/bin
+        legacy = self.install_dir / "dependency-check"
+        if legacy.is_dir():
+            shutil.rmtree(legacy, ignore_errors=True)
+        elif legacy.is_file():
+            legacy.unlink(missing_ok=True)
 
-        bin_sub = self.install_dir / "dependency-check" / "bin" / ("dependency-check.bat" if self.os_type == "windows" else "dependency-check.sh")
-        if bin_sub.exists():
-            dest_bin = self.install_dir / ("dependency-check.bat" if self.os_type == "windows" else "dependency-check")
-            if not dest_bin.exists():
-                try:
-                    os.symlink(bin_sub, dest_bin)
-                except Exception:
-                    shutil.copy2(bin_sub, dest_bin)
-            dest_bin.chmod(0o755)
-        tmp_zip.unlink(missing_ok=True)
+        real_bin = self.opt_dir / "dependency-check" / "bin" / ("dependency-check.bat" if self.os_type == "windows" else "dependency-check.sh")
+        real_bin.chmod(0o755)
+
+        if self.os_type == "windows":
+            wrapper = self.install_dir / "dependency-check.cmd"
+            wrapper.write_text(f'@echo off\n"{real_bin}" %*\n', encoding="utf-8")
+        else:
+            wrapper = self.install_dir / "dependency-check"
+            wrapper.write_text(f'#!/bin/sh\nexec "{real_bin}" "$@"\n', encoding="utf-8")
+            wrapper.chmod(0o755)

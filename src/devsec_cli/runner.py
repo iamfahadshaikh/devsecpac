@@ -1,16 +1,38 @@
 """Cross-platform process runner and binary locator."""
 
+import os
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 
 class ProcessRunner:
     @staticmethod
-    def find_binary(binary_name: str) -> Optional[str]:
-        """Locates a binary executable across PATH (handles .exe on Windows and PATH on Linux)."""
-        return shutil.which(binary_name)
+    def find_binary(binary_name: Optional[str]) -> Optional[str]:
+        """Locates a binary executable across PATH and ~/.local/bin fallback."""
+        if not binary_name:
+            return None
+
+        # 1. Standard PATH lookup
+        found = shutil.which(binary_name)
+        if found and Path(found).is_file():
+            return found
+
+        # 2. Local bin fallback (~/.local/bin or %USERPROFILE%\.local\bin)
+        user_home = Path(os.environ.get("USERPROFILE") if os.name == "nt" else Path.home())
+        local_bin = user_home / ".local" / "bin" / binary_name
+        if local_bin.is_file() and (os.name == "nt" or os.access(local_bin, os.X_OK)):
+            return str(local_bin)
+
+        if os.name == "nt":
+            for ext in (".exe", ".cmd", ".bat"):
+                cand = user_home / ".local" / "bin" / f"{binary_name}{ext}"
+                if cand.is_file():
+                    return str(cand)
+
+        return None
 
     @staticmethod
     def run_command(
