@@ -38,21 +38,23 @@ class RepoIngestion:
         self.temp_dir = Path(tempfile.mkdtemp(prefix="devsec_target_"))
         clone_target = self.temp_dir / "repo"
 
-        console.print(f"[bold cyan]🌐 Ingesting Remote Repository:[/bold cyan] [bold white]{self.repo_url}[/bold white]")
+        console.print(f"[bold cyan]Ingesting Remote Repository:[/bold cyan] [bold white]{self.repo_url}[/bold white]")
         if self.token:
-            console.print("  • Auth: [green]Secure Ephemeral Credential Helper (GIT_ASKPASS)[/green]")
+            console.print("  * Auth: [green]Secure Ephemeral Credential Helper (GIT_ASKPASS)[/green]")
         else:
-            console.print("  • Auth: [yellow]Anonymous / SSH Agent Auth[/yellow]")
+            console.print("  * Auth: [yellow]Anonymous / SSH Agent Auth[/yellow]")
 
         askpass_path: Optional[Path] = None
         env = os.environ.copy()
+        # Strictly disable interactive terminal prompts across all Git/SSH operations
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
 
         try:
             # Configure GIT_ASKPASS if token provided to prevent process table sniffing (ps aux)
             if self.token:
                 askpass_path = self._create_askpass_helper(self.token)
                 env["GIT_ASKPASS"] = str(askpass_path)
-                env["GIT_TERMINAL_PROMPT"] = "0"
                 env["DEVSEC_EPHEMERAL_PAT"] = self.token
 
             # Full un-shallow clone command with all branches
@@ -64,7 +66,7 @@ class RepoIngestion:
                 str(clone_target)
             ]
 
-            console.print("  • Fetching complete commit history (all branches & full depth)...")
+            console.print("  * Fetching complete commit history (all branches & full depth)...")
             code, stdout, stderr, elapsed = ProcessRunner.run_command(clone_cmd, timeout=900, env=env)
 
             if code != 0:
@@ -82,9 +84,9 @@ class RepoIngestion:
             if self.branch:
                 checkout_cmd = [git_bin, "checkout", self.branch]
                 ProcessRunner.run_command(checkout_cmd, cwd=str(clone_target), timeout=60, env=env)
-                console.print(f"  • Switched to target branch: [bold cyan]{self.branch}[/bold cyan]")
+                console.print(f"  * Switched to target branch: [bold cyan]{self.branch}[/bold cyan]")
 
-            console.print(f"  • [bold green]✔[/bold green] Repository ingested successfully into: [dim]{clone_target}[/dim] ({elapsed}s)\n")
+            console.print(f"  * [bold green][OK][/bold green] Repository ingested successfully into: [dim]{clone_target}[/dim] ({elapsed}s)\n")
             return True, clone_target, ""
 
         except Exception as e:
@@ -97,7 +99,7 @@ class RepoIngestion:
     def cleanup(self):
         """Scrubs the ingested repository unless keep_repo is set."""
         if self.keep_repo:
-            console.print(f"[dim]📁 Preserved cloned repository at: {self.temp_dir}[/dim]")
+            console.print(f"[dim]Preserved cloned repository at: {self.temp_dir}[/dim]")
             return
 
         if self.temp_dir and self.temp_dir.exists():

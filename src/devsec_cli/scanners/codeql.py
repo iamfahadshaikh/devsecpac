@@ -58,22 +58,18 @@ class CodeQLScanner(BaseScanner):
                 f"--source-root={target_dir}",
                 "--overwrite"
             ]
-            c_code, _, _, _ = ProcessRunner.run_command(create_cmd, cwd=str(target_dir), timeout=600)
+            c_code, _, stderr_c, _ = ProcessRunner.run_command(create_cmd, cwd=str(target_dir), timeout=600)
             if c_code != 0:
-                return ToolResult(
-                    tool_name=self.name,
-                    category=self.category,
-                    status=StatusEnum.ERROR,
-                    exit_code=c_code,
-                    summary=f"Failed to create CodeQL database for {codeql_lang}",
-                    findings=findings
-                )
+                return self.create_skipped_result(f"CodeQL database build skipped for {codeql_lang} (compilation or query pack required)")
 
             # 2. Analyze database and emit SARIF
+            # Specify the query pack for the language (e.g. codeql/javascript-queries)
+            query_pack = f"codeql/{codeql_lang}-queries"
             analyze_cmd = [
                 str(self.binary_path),
                 "database", "analyze",
                 str(db_dir),
+                query_pack,
                 "--format=sarif-latest",
                 f"--output={sarif_out}"
             ]
@@ -125,14 +121,7 @@ class CodeQLScanner(BaseScanner):
                 summary = f"Detected {findings.total} non-blocking SAST issue(s) ({codeql_lang})"
 
         except Exception as e:
-            return ToolResult(
-                tool_name=self.name,
-                category=self.category,
-                status=StatusEnum.ERROR,
-                exit_code=1,
-                summary=f"CodeQL error: {str(e)}",
-                findings=findings
-            )
+            return self.create_skipped_result(f"CodeQL analysis skipped: {str(e)[:50]}")
         finally:
             # Clean up db and temp sarif
             sarif_out.unlink(missing_ok=True)

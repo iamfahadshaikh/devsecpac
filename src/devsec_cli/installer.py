@@ -54,10 +54,10 @@ class ToolInstaller:
         return local_bin.is_file() and os.access(local_bin, os.X_OK)
 
     def install_all(self):
-        console.print(f"\n[bold green]🛠️ DevSecOps Autonomous Toolchain Installer[/bold green]")
-        console.print(f"  • Platform: [cyan]{self.os_type}[/cyan] ({self.arch_norm})")
-        console.print(f"  • Target Directory: [yellow]{self.install_dir}[/yellow]")
-        console.print(f"  • Apt Available: [bold]{'Yes' if self.has_apt else 'No'}[/bold]\n")
+        console.print(f"\n[bold green]DevSecOps Autonomous Toolchain Installer[/bold green]")
+        console.print(f"  * Platform: [cyan]{self.os_type}[/cyan] ({self.arch_norm})")
+        console.print(f"  * Target Directory: [yellow]{self.install_dir}[/yellow]")
+        console.print(f"  * Apt Available: [bold]{'Yes' if self.has_apt else 'No'}[/bold]\n")
 
         tools = [
             ("gitleaks", self.install_gitleaks),
@@ -71,23 +71,25 @@ class ToolInstaller:
             ("codeql", self.install_codeql),
             ("sonar-scanner", self.install_sonar),
             ("dependency-check", self.install_dependency_check),
+            ("mobsfscan", self.install_mobsfscan),
+            ("nmap", self.install_nmap),
         ]
 
         for name, installer_fn in tools:
             if self.is_in_path(name):
-                console.print(f"  • [green]✔[/green] {name:<18} Already installed in PATH.")
+                console.print(f"  * [green][OK][/green] {name:<18} Already installed in PATH.")
                 continue
-            console.print(f"  • [bold blue]⬇[/bold blue] {name:<18} Installing...", end="\r")
+            console.print(f"  * [bold blue][..][/bold blue] {name:<18} Installing...", end="\r")
             try:
                 installer_fn()
                 if self.is_in_path(name):
-                    console.print(f"  • [green]✔[/green] {name:<18} [bold green]Installed successfully![/bold green]   ")
+                    console.print(f"  * [green][OK][/green] {name:<18} [bold green]Installed successfully![/bold green]   ")
                 else:
-                    console.print(f"  • [green]✔[/green] {name:<18} [bold green]Setup completed![/bold green]   ")
+                    console.print(f"  * [green][OK][/green] {name:<18} [bold green]Setup completed![/bold green]   ")
             except Exception as e:
-                console.print(f"  • [red]✘[/red] {name:<18} [red]Failed:[/red] {str(e)[:70]}")
+                console.print(f"  * [red][ERR][/red] {name:<18} [red]Failed:[/red] {str(e)[:70]}")
 
-        console.print(f"\n[bold yellow]💡 Tip:[/bold yellow] Ensure [cyan]{self.install_dir}[/cyan] is in your PATH:")
+        console.print(f"\n[bold yellow]Tip:[/bold yellow] Ensure [cyan]{self.install_dir}[/cyan] is in your PATH:")
         if self.os_type == "windows":
             console.print(f'   [dim]$env:PATH += ";{self.install_dir}"[/dim]')
         else:
@@ -290,6 +292,15 @@ class ToolInstaller:
             z.extractall(self.opt_dir)
         tmp_zip.unlink(missing_ok=True)
 
+        # Ensure all extracted binaries and JRE sub-executables are marked executable on POSIX
+        if self.os_type != "windows":
+            for p in (self.opt_dir / "codeql").rglob("*"):
+                if p.is_file() and not p.name.endswith((".txt", ".md", ".json", ".xml", ".properties")):
+                    try:
+                        p.chmod(p.stat().st_mode | 0o755)
+                    except Exception:
+                        pass
+
         # Remove any lingering directory named codeql in ~/.local/bin
         legacy_dir = self.install_dir / "codeql"
         if legacy_dir.is_dir():
@@ -322,6 +333,15 @@ class ToolInstaller:
                 z.extractall(self.opt_dir)
             tmp_zip.unlink(missing_ok=True)
 
+            # Ensure bundled JRE executables (java, etc.) are executable on POSIX
+            if self.os_type != "windows":
+                for p in sonar_dir.rglob("*"):
+                    if p.is_file() and not p.name.endswith((".txt", ".md", ".json", ".xml", ".properties")):
+                        try:
+                            p.chmod(p.stat().st_mode | 0o755)
+                        except Exception:
+                            pass
+
         real_bin = sonar_dir / "bin" / ("sonar-scanner.bat" if self.os_type == "windows" else "sonar-scanner")
         real_bin.chmod(0o755)
 
@@ -346,6 +366,15 @@ class ToolInstaller:
                 z.extractall(self.opt_dir)
             tmp_zip.unlink(missing_ok=True)
 
+            # Ensure bundled JRE executables (java, etc.) are executable on POSIX
+            if self.os_type != "windows":
+                for p in sonar_dir.rglob("*"):
+                    if p.is_file() and not p.name.endswith((".txt", ".md", ".json", ".xml", ".properties")):
+                        try:
+                            p.chmod(p.stat().st_mode | 0o755)
+                        except Exception:
+                            pass
+
         # Remove any lingering directory named dependency-check in ~/.local/bin
         legacy = self.install_dir / "dependency-check"
         if legacy.is_dir():
@@ -363,3 +392,26 @@ class ToolInstaller:
             wrapper = self.install_dir / "dependency-check"
             wrapper.write_text(f'#!/bin/sh\nexec "{real_bin}" "$@"\n', encoding="utf-8")
             wrapper.chmod(0o755)
+
+    def install_mobsfscan(self):
+        """Installs mobsfscan using pip or pipx with PEP 668 support."""
+        pipx = shutil.which("pipx")
+        if pipx:
+            subprocess.run([pipx, "install", "mobsfscan"], check=True, capture_output=True)
+            return
+
+        cmd = [sys.executable, "-m", "pip", "install", "mobsfscan", "--break-system-packages"]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True)
+            return
+        except subprocess.CalledProcessError:
+            pass
+
+        cmd_standard = [sys.executable, "-m", "pip", "install", "mobsfscan"]
+        subprocess.run(cmd_standard, check=True, capture_output=True)
+
+    def install_nmap(self):
+        """Installs nmap via apt if on Debian/Ubuntu/Kali."""
+        if self._try_apt_install("nmap"):
+            return
+        raise RuntimeError("nmap should be installed via your system package manager (e.g. sudo apt install nmap)")

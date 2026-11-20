@@ -1,4 +1,4 @@
-# 🛡️ devsecpac: Universal Autonomous DevSecOps Scanner
+# devsecpac: Universal Autonomous DevSecOps Scanner
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
@@ -14,7 +14,7 @@ devsec scan .
 
 ---
 
-## 🌟 Features
+## Features
 
 - **One-Command Full Spectrum Scan:** Scans secrets, Dockerfiles, IaC, Kubernetes manifests, package dependencies (SCA), and generates SBOMs.
 - **Graceful Tool Degradation:** Missing tools or non-applicable technologies (e.g. no Dockerfiles) are automatically marked as `SKIPPED` or `NOT_APPLICABLE` without breaking your build or pipeline.
@@ -24,7 +24,7 @@ devsec scan .
 
 ---
 
-## 📦 Installation
+## Installation
 
 ### Option 1: Install Locally in Editable Mode
 ```bash
@@ -45,7 +45,7 @@ pip install dist/*.whl
 
 ---
 
-## 🚀 Quick Usage
+## Quick Usage
 
 ### 1. Check Tool Availability on Your System
 ```bash
@@ -82,7 +82,7 @@ devsecpac scan -r https://github.com/org/repo.git --strict
 
 ---
 
-## 🛠️ Supported Scanners & Capabilities
+## Supported Scanners & Capabilities
 
 | Security Dimension | Scanner / Engine | Missing Tool Behavior |
 | :--- | :--- | :--- |
@@ -96,5 +96,5 @@ devsecpac scan -r https://github.com/org/repo.git --strict
 
 ---
 
-## 📄 License
+## License
 MIT © Fahad Shaikh

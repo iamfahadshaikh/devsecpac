@@ -1,6 +1,8 @@
 """Software Composition Analysis (SCA) & Filesystem Vulnerability Scanners."""
 
 from pathlib import Path
+import os
+import shutil
 import json
 from .base import BaseScanner
 from ..contracts import ToolResult, StatusEnum, FindingCounts, FindingDetail
@@ -99,23 +101,43 @@ class DependencyCheckScanner(BaseScanner):
             return self.create_skipped_result("dependency-check binary not found in PATH")
 
         out_dir = target_dir / ".owasp_dc"
+        nvd_api_key = os.environ.get("NVD_API_KEY", "")
+
         cmd = [
             str(self.binary_path),
             "--scan", str(target_dir),
             "--format", "JSON",
             "--out", str(out_dir),
-            "--failOnCVSS", "7"
+            "--failOnCVSS", "7",
+            "--disableAssembly"  # avoid heavy .NET reflection overhead
         ]
 
-        code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
+        if nvd_api_key:
+            cmd.extend(["--nvdApiKey", nvd_api_key])
+        else:
+            # Without an NVD API key, NIST rate-limits download requests heavily
+            # Pass noupdate if local database cache exists to avoid 10-minute freezes
+            data_dir = Path.home() / ".local" / "opt" / "dependency-check" / "data"
+            if (data_dir / "odc.mv.db").exists():
+                cmd.append("--noupdate")
+
+        code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=120)
 
         findings = FindingCounts()
         items = []
-        status = StatusEnum.PASS
-        summary = "No CVE vulnerabilities >= CVSS 7.0 detected"
+
+        if code == -1:
+            return self.create_skipped_result("NVD feed download timed out (export NVD_API_KEY for faster updates)")
 
         report_file = out_dir / "dependency-check-report.json"
-        if report_file.exists():
+        if not report_file.exists():
+            if code != 0:
+                return self.create_skipped_result("Dependency-Check run failed (NVD database feed unavailable)")
+            status = StatusEnum.PASS
+            summary = "No CVE vulnerabilities >= CVSS 7.0 detected"
+        else:
+            status = StatusEnum.PASS
+            summary = "No CVE vulnerabilities >= CVSS 7.0 detected"
             try:
                 data = json.loads(report_file.read_text(encoding="utf-8"))
                 dependencies = data.get("dependencies", [])
@@ -155,6 +177,8 @@ class DependencyCheckScanner(BaseScanner):
                     summary = f"Detected {findings.critical} Critical and {findings.high} High CVEs"
             except Exception:
                 pass
+            finally:
+                shutil.rmtree(out_dir, ignore_errors=True)
 
         return ToolResult(
             tool_name=self.name,

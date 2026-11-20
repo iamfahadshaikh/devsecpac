@@ -14,9 +14,15 @@ class Reporter:
         self.console = console or Console()
 
     def print_terminal_table(self, results: List[ToolResult]):
-        """Prints a refined, non-wrapping terminal table of all scanner results."""
+        """Prints a refined, non-wrapping terminal table of active scanner results.
+        Filters out NOT_APPLICABLE tools with 0 findings to keep outputs clean."""
+        active_results = [
+            r for r in results 
+            if not (r.status == StatusEnum.NOT_APPLICABLE and r.findings.total == 0)
+        ]
+
         table = Table(
-            title="🛡️ DevSecOps Autonomous Pipeline Scan Results",
+            title="DevSecOps Autonomous Pipeline Scan Results",
             show_lines=True,
             header_style="bold cyan",
             expand=False
@@ -40,7 +46,7 @@ class Reporter:
             StatusEnum.ERROR: "[bold white on red]ERROR[/bold white on red]",
         }
 
-        for r in results:
+        for r in active_results:
             styled_status = status_styles.get(r.status, r.status.value)
             table.add_row(
                 r.tool_name,
@@ -79,7 +85,7 @@ class Reporter:
         total_low = len(low_items)
 
         summary_title = (
-            f"🔍 Security Findings Breakdown: "
+            f"Security Findings Breakdown: "
             f"[bold red]{total_crit} Critical[/bold red] | "
             f"[red]{total_high} High[/red] | "
             f"[yellow]{total_med} Medium[/yellow] | "
@@ -124,16 +130,16 @@ class Reporter:
     def generate_markdown_summary(self, results: List[ToolResult], output_path: Path):
         """Generates an executive Markdown table with full findings drill-down."""
         md = []
-        md.append("# 🛡️ Autonomous DevSecOps Pipeline Security Report\n")
+        md.append("# Autonomous DevSecOps Pipeline Security Report\n")
         md.append("| Scanner / Tool | Category | Status | Crit | High | Med | Low | Time | Summary |")
         md.append("|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---|")
 
-        status_emojis = {
-            StatusEnum.PASS: "✅ PASS",
-            StatusEnum.FAIL: "❌ FAIL",
-            StatusEnum.NOT_APPLICABLE: "⚪ N/A",
-            StatusEnum.SKIPPED: "⏭️ SKIPPED",
-            StatusEnum.ERROR: "⚠️ ERROR",
+        status_labels = {
+            StatusEnum.PASS: "[PASS]",
+            StatusEnum.FAIL: "[FAIL]",
+            StatusEnum.NOT_APPLICABLE: "[N/A]",
+            StatusEnum.SKIPPED: "[SKIPPED]",
+            StatusEnum.ERROR: "[ERROR]",
         }
 
         total_crit = sum(r.findings.critical for r in results)
@@ -141,8 +147,13 @@ class Reporter:
         total_med = sum(r.findings.medium for r in results)
         total_low = sum(r.findings.low for r in results)
 
-        for r in results:
-            tag = status_emojis.get(r.status, r.status.value)
+        active_results = [
+            r for r in results 
+            if not (r.status == StatusEnum.NOT_APPLICABLE and r.findings.total == 0)
+        ]
+
+        for r in active_results:
+            tag = status_labels.get(r.status, r.status.value)
             md.append(
                 f"| **{r.tool_name}** | {r.category} | {tag} | "
                 f"{r.findings.critical} | {r.findings.high} | {r.findings.medium} | {r.findings.low} | "
@@ -155,9 +166,9 @@ class Reporter:
         md.append("\n---\n")
 
         if (total_crit + total_high) > 0:
-            md.append(f"> ❌ **GATE FAILED**: Found **{total_crit} Critical** and **{total_high} High** severity issue(s). Pipeline gate blocked.\n")
+            md.append(f"> **GATE FAILED**: Found **{total_crit} Critical** and **{total_high} High** severity issue(s). Pipeline gate blocked.\n")
         else:
-            md.append("> ✅ **GATE PASSED**: No Critical or High severity security issues detected.\n")
+            md.append("> **GATE PASSED**: No Critical or High severity security issues detected.\n")
 
         # Detailed Findings Table in Markdown
         all_items: List[FindingDetail] = []
@@ -165,7 +176,7 @@ class Reporter:
             all_items.extend(r.items)
 
         if all_items:
-            md.append("## 🔍 Detailed Findings Drill-Down\n")
+            md.append("## Detailed Findings Drill-Down\n")
             md.append("| Severity | Scanner | Location (File:Line) | Rule / CVE | Description |")
             md.append("|:---:|:---|:---|:---|:---|")
             for item in all_items:
