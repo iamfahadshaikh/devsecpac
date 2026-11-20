@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
     GIT_TERMINAL_PROMPT=0 \
     PATH="/root/.local/bin:/root/.local/opt/dependency-check/bin:$PATH"
 
-# Install core system utilities, git, curl, openjdk (needed for dependency-check / sonar), and nmap
+# Install core system utilities, git, curl, openjdk, nodejs (needed for CodeQL TypeScript AST), and nmap
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     ca-certificates \
     default-jre-headless \
+    nodejs \
     nmap \
     && rm -rf /var/lib/apt/lists/*
 
@@ -32,6 +33,9 @@ RUN pip install --no-cache-dir .
 
 # Pre-populate and install toolchains using devsec's built-in autonomous installer
 RUN devsec setup || true
+
+# Pre-download standard CodeQL query packs for JavaScript, Python, and Go so they are pre-baked
+RUN codeql pack download codeql/javascript-queries codeql/python-queries || true
 
 # Set workspace directory for targets
 WORKDIR /workspace
