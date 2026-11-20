@@ -1,0 +1,9 @@
+.git
+.pytest_cache
+*.pyc
+__pycache__
+devsec-report.json
+devsec-summary.md
+sbom-cyclonedx.json
+.scannerwork
+.codeql_db

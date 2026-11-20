@@ -209,7 +209,7 @@ class ToolInstaller:
     def install_trivy(self):
         if self._try_apt_install("trivy"):
             return
-        ver = "0.58.2"
+        ver = "0.76.2"
         os_str = "windows" if self.os_type == "windows" else ("Linux" if self.os_type == "linux" else "macOS")
         arch_title = "64bit" if self.arch_norm == "amd64" else "ARM64"
         ext = "zip" if self.os_type == "windows" else "tar.gz"
@@ -333,7 +333,7 @@ class ToolInstaller:
                 z.extractall(self.opt_dir)
             tmp_zip.unlink(missing_ok=True)
 
-            # Ensure bundled JRE executables (java, etc.) are executable on POSIX
+            # Ensure extracted binaries are executable on POSIX
             if self.os_type != "windows":
                 for p in sonar_dir.rglob("*"):
                     if p.is_file() and not p.name.endswith((".txt", ".md", ".json", ".xml", ".properties")):
@@ -366,9 +366,9 @@ class ToolInstaller:
                 z.extractall(self.opt_dir)
             tmp_zip.unlink(missing_ok=True)
 
-            # Ensure bundled JRE executables (java, etc.) are executable on POSIX
+            # Ensure extracted binaries are executable on POSIX
             if self.os_type != "windows":
-                for p in sonar_dir.rglob("*"):
+                for p in dc_opt.rglob("*"):
                     if p.is_file() and not p.name.endswith((".txt", ".md", ".json", ".xml", ".properties")):
                         try:
                             p.chmod(p.stat().st_mode | 0o755)
