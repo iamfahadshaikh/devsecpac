@@ -23,6 +23,8 @@ from .scanners.dast import OWASPZAPScanner
 from .scanners.k8s_audit import K8sStructuralAuditScanner
 from .scanners.mobsf import MobSFScanner
 from .scanners.nmap import NmapScanner
+from .scanners.semgrep import SemgrepScanner
+from .scanners.kubelinter import KubeLinterScanner
 
 
 console = Console()
@@ -32,11 +34,13 @@ def build_scanners():
     return [
         GitleaksScanner(),
         TruffleHogScanner(),
+        SemgrepScanner(),
         HadolintScanner(),
         CodeQLScanner(),
         SonarQubeScanner(),
         CheckovScanner(),
         KubeconformScanner(),
+        KubeLinterScanner(),
         KyvernoScanner(),
         TrivyFSScanner(),
         DependencyCheckScanner(),
