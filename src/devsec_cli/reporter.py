@@ -65,10 +65,9 @@ class Reporter:
         self.console.print()
 
     def print_findings_drilldown(self, results: List[ToolResult]):
-        """Prints detailed findings grouped by file and severity."""
-        all_items: List[FindingDetail] = []
-        for r in results:
-            all_items.extend(r.items)
+        """Prints detailed findings grouped by file and severity, with automatic cross-scanner deduplication."""
+        from .correlator import FindingCorrelator
+        all_items, stats = FindingCorrelator.deduplicate_findings(results)
 
         if not all_items:
             return
@@ -84,12 +83,13 @@ class Reporter:
         total_med = len(med_items)
         total_low = len(low_items)
 
+        dedup_info = f" (Deduplicated: {stats['duplicates_removed']} duplicate alerts collapsed)" if stats['duplicates_removed'] > 0 else ""
         summary_title = (
             f"Security Findings Breakdown: "
             f"[bold red]{total_crit} Critical[/bold red] | "
             f"[red]{total_high} High[/red] | "
             f"[yellow]{total_med} Medium[/yellow] | "
-            f"[blue]{total_low} Low[/blue]"
+            f"[blue]{total_low} Low[/blue]{dedup_info}"
         )
 
         table = Table(
