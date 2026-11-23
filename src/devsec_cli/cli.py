@@ -156,21 +156,20 @@ def run_scan(
             return 0
         results: List[ToolResult] = []
 
-        with console.status("[bold blue]Executing security scanners...[/bold blue]", spinner="dots"):
-            for scanner in scanners:
-                try:
-                    res = scanner.scan(target_path)
-                    results.append(res)
-                except Exception as e:
-                    results.append(
-                        ToolResult(
-                            tool_name=scanner.name,
-                            category=scanner.category,
-                            status=StatusEnum.ERROR,
-                            exit_code=1,
-                            summary=f"Internal error: {str(e)}"
-                        )
+        for scanner in scanners:
+            try:
+                res = scanner.scan(target_path)
+                results.append(res)
+            except Exception as e:
+                results.append(
+                    ToolResult(
+                        tool_name=scanner.name,
+                        category=scanner.category,
+                        status=StatusEnum.ERROR,
+                        exit_code=1,
+                        summary=f"Internal error: {str(e)}"
                     )
+                )
 
         # Reporting & Terminal Output
         reporter = Reporter(console)

@@ -212,7 +212,14 @@ class SonarQubeScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
         if code != 0:
-            return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
+            err_msg = stderr.strip() or stdout.strip()
+            # Extract relevant error line from sonar-scanner output if available
+            short_err = "SonarQube analysis failed or server unreachable"
+            for line in err_msg.splitlines():
+                if "ERROR:" in line or "Exception" in line or "Unauthorized" in line:
+                    short_err = line.strip()
+                    break
+            return self.create_skipped_result(f"{short_err} (export SONAR_HOST_URL & SONAR_TOKEN)")
 
         # Query REST API for detailed findings
         findings, items = self._fetch_sonar_issues(sonar_host, sonar_token, project_key)
