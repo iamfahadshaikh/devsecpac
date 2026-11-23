@@ -74,7 +74,22 @@ class RepoIngestion:
                 sanitized_err = stderr
                 if self.token:
                     sanitized_err = sanitized_err.replace(self.token, "********")
-                return False, None, f"Git clone failed (exit {code}): {sanitized_err.strip()}"
+                
+                auth_hint = ""
+                lower_err = sanitized_err.lower()
+                if "could not read password" in lower_err or "terminal prompts disabled" in lower_err or "authentication failed" in lower_err or "permission denied" in lower_err:
+                    auth_hint = (
+                        "\n\n[bold yellow]Authentication Required / Failed:[/bold yellow]\n"
+                        "This repository is private or requires authentication.\n"
+                        "Provide your token or PAT using one of the following methods:\n"
+                        "  1. [bold cyan]--token <PAT_OR_PASSWORD>[/bold cyan]\n"
+                        "     Example: [dim]devsec scan -r \"<URL>\" --token \"YOUR_TOKEN_HERE\"[/dim]\n"
+                        "  2. [bold cyan]Environment Variable:[/bold cyan]\n"
+                        "     Example: [dim]export GIT_TOKEN=\"YOUR_TOKEN_HERE\"[/dim] (or GITHUB_TOKEN / AZURE_DEVOPS_EXT_PAT)\n"
+                        "  3. [bold cyan]SSH Key Auth:[/bold cyan]\n"
+                        "     Example: [dim]devsec scan -r \"git@ssh.dev.azure.com:v3/...\"[/dim] or [dim]\"git@github.com:...\"[/dim]"
+                    )
+                return False, None, f"Git clone failed (exit {code}): {sanitized_err.strip()}{auth_hint}"
 
             # Fetch all remote refs explicitly to guarantee full visibility
             fetch_cmd = [git_bin, "fetch", "--all", "--tags"]
