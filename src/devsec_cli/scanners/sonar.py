@@ -142,14 +142,16 @@ class SonarQubeScanner(BaseScanner):
     def _auto_generate_token(self, sonar_host: str) -> str:
         """Attempts to auto-generate a devsec-cli token using default admin:admin."""
         try:
-            url = f"{sonar_host.rstrip('/')}/api/user_tokens/generate?name=devsec-cli-{int(time.time())}"
-            req = urllib.request.Request(url, method="POST")
+            url = f"{sonar_host.rstrip('/')}/api/user_tokens/generate"
+            params = f"name=devsec-cli-{int(time.time())}".encode("utf-8")
+            req = urllib.request.Request(url, data=params, method="POST")
             auth_str = base64.b64encode(b"admin:admin").decode()
             req.add_header("Authorization", f"Basic {auth_str}")
+            req.add_header("Content-Type", "application/x-www-form-urlencoded")
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode())
                 return data.get("token", "")
-        except Exception:
+        except Exception as e:
             return ""
 
     def _prompt_start_sonarqube(self, sonar_host: str) -> str:
@@ -219,6 +221,11 @@ class SonarQubeScanner(BaseScanner):
             if sonar_token:
                 self._save_cached_token(sonar_token)
                 console.print(f"  * [bold green][OK][/bold green] SonarQube connected with auto-generated token: [dim]{sonar_token[:12]}...[/dim]")
+
+        if sonar_token:
+            console.print(f"  * SonarQube Auth: [bold green]Token authenticated[/bold green] ([dim]{sonar_token[:8]}...[/dim])")
+        else:
+            console.print("  * SonarQube Auth: [bold yellow]Anonymous (no token found)[/bold yellow]")
 
         # If still no token, pass empty or let sonar-scanner try anonymous/default
         console.print(f"  * SonarQube Target Host: [bold cyan]{sonar_host}[/bold cyan]")
