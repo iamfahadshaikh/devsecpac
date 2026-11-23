@@ -74,7 +74,6 @@ class ToolInstaller:
             ("mobsfscan", self.install_mobsfscan),
             ("nmap", self.install_nmap),
             ("semgrep", self.install_semgrep),
-            ("kube-linter", self.install_kubelinter),
             ("cosign", self.install_cosign),
             ("st", self.install_schemathesis),
         ]
@@ -459,26 +458,3 @@ class ToolInstaller:
         urllib.request.urlretrieve(url, target_file)
         target_file.chmod(0o755)
 
-    def install_kubelinter(self):
-        """Installs KubeLinter from official GitHub release."""
-        tag = "0.6.8"
-        archive_name = "kube-linter-linux.tar.gz" if self.arch_norm == "amd64" else "kube-linter-linux_arm64.tar.gz"
-        if self.os_type == "windows":
-            archive_name = "kube-linter-windows.zip"
-        
-        url = f"https://github.com/stackrox/kube-linter/releases/download/{tag}/{archive_name}"
-
-        archive_path = self.install_dir / archive_name
-        urllib.request.urlretrieve(url, archive_path)
-
-        if archive_name.endswith(".zip"):
-            with zipfile.ZipFile(archive_path, 'r') as zf:
-                zf.extractall(self.install_dir)
-        else:
-            with tarfile.open(archive_path, "r:gz") as tf:
-                tf.extractall(self.install_dir)
-
-        archive_path.unlink(missing_ok=True)
-        bin_file = self.install_dir / ("kube-linter.exe" if self.os_type == "windows" else "kube-linter")
-        if bin_file.exists():
-            bin_file.chmod(0o755)

@@ -24,7 +24,6 @@ from .scanners.k8s_audit import K8sStructuralAuditScanner
 from .scanners.mobsf import MobSFScanner
 from .scanners.nmap import NmapScanner
 from .scanners.semgrep import SemgrepScanner
-from .scanners.kubelinter import KubeLinterScanner
 from .scanners.schemathesis import SchemathesisScanner
 from .scanners.cosign import CosignAttestationEngine
 
@@ -42,7 +41,6 @@ def build_scanners():
         SonarQubeScanner(),
         CheckovScanner(),
         KubeconformScanner(),
-        KubeLinterScanner(),
         KyvernoScanner(),
         TrivyFSScanner(),
         DependencyCheckScanner(),

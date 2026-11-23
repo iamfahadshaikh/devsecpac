@@ -19,7 +19,7 @@ DevSecPac v2 elevates `devsec` from a multi-engine scanner into an autonomous De
    - Flags active SQLi, XSS, and missing security headers.
 4. **Schemathesis (API Contract Security Testing)**
    - Property-based API fuzzer that parses OpenAPI / Swagger / GraphQL specs to identify 500 crashes and boundary errors.
-5. **KubeLinter & Polaris (Deep Kubernetes Workload Security)**
+5. **Polaris / Checkov K8s Security (Deep Kubernetes Workload Security)**
    - Static analysis of Kubernetes manifests for resource quotas, readiness probes, and root privileges.
 6. **DefectDojo & Faraday Exporters (ASPM Integration)**
    - `--defectdojo-push` flag to push consolidated results directly to enterprise vulnerability dashboards via REST API.
@@ -39,7 +39,7 @@ DevSecPac v2 elevates `devsec` from a multi-engine scanner into an autonomous De
 
 ## 3. Implementation Phases
 - [ ] **Phase 1: Deduplication & Correlation Core** (`src/devsec_cli/correlator.py`)
-- [ ] **Phase 2: Semgrep & KubeLinter Engine Integration**
+- [x] **Phase 2: Semgrep Fast SAST Engine Integration**
 - [ ] **Phase 3: Schemathesis & OWASP ZAP Baseline DAST**
 - [ ] **Phase 4: Cosign SBOM Signing & Supply Chain Verification**
 - [ ] **Phase 5: Automated Remediation Engine (`devsec fix`)**
