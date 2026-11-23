@@ -215,12 +215,26 @@ class SonarQubeScanner(BaseScanner):
             elif not self._check_server_reachable(sonar_host):
                 return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
 
-        # If server is reachable but token is still missing, try auto-generating or using default
+        # When new container was created, old conf properties has old token that fails
+        # Verify token by testing /api/authentication/validate
+        if sonar_token:
+            try:
+                val_req = urllib.request.Request(f"{sonar_host.rstrip('/')}/api/authentication/validate")
+                auth_str = base64.b64encode(f"{sonar_token}:".encode()).decode()
+                val_req.add_header("Authorization", f"Basic {auth_str}")
+                with urllib.request.urlopen(val_req, timeout=3) as val_resp:
+                    val_data = json.loads(val_resp.read().decode())
+                    if not val_data.get("valid"):
+                        sonar_token = ""
+            except Exception:
+                sonar_token = ""
+
+        # If server is reachable but token is missing or invalid, generate fresh token from live container
         if not sonar_token and self._check_server_reachable(sonar_host):
             sonar_token = self._auto_generate_token(sonar_host)
             if sonar_token:
                 self._save_cached_token(sonar_token)
-                console.print(f"  * [bold green][OK][/bold green] SonarQube connected with auto-generated token: [dim]{sonar_token[:12]}...[/dim]")
+                console.print(f"  * [bold green][OK][/bold green] SonarQube connected with freshly generated token: [dim]{sonar_token[:12]}...[/dim]")
 
         if sonar_token:
             console.print(f"  * SonarQube Auth: [bold green]Token authenticated[/bold green] ([dim]{sonar_token[:8]}...[/dim])")
