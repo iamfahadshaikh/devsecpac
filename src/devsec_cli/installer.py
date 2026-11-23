@@ -73,6 +73,10 @@ class ToolInstaller:
             ("dependency-check", self.install_dependency_check),
             ("mobsfscan", self.install_mobsfscan),
             ("nmap", self.install_nmap),
+            ("semgrep", self.install_semgrep),
+            ("kube-linter", self.install_kubelinter),
+            ("cosign", self.install_cosign),
+            ("st", self.install_schemathesis),
         ]
 
         for name, installer_fn in tools:
@@ -415,3 +419,65 @@ class ToolInstaller:
         if self._try_apt_install("nmap"):
             return
         raise RuntimeError("nmap should be installed via your system package manager (e.g. sudo apt install nmap)")
+
+    def install_semgrep(self):
+        """Installs Semgrep fast SAST via pip with PEP 668 support."""
+        pipx = shutil.which("pipx")
+        if pipx:
+            subprocess.run([pipx, "install", "semgrep"], check=True, capture_output=True)
+            return
+
+        cmd = [sys.executable, "-m", "pip", "install", "semgrep", "--break-system-packages"]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True)
+            return
+        except subprocess.CalledProcessError:
+            subprocess.run([sys.executable, "-m", "pip", "install", "semgrep"], check=True, capture_output=True)
+
+    def install_schemathesis(self):
+        """Installs Schemathesis API tester via pip with PEP 668 support."""
+        pipx = shutil.which("pipx")
+        if pipx:
+            subprocess.run([pipx, "install", "schemathesis"], check=True, capture_output=True)
+            return
+
+        cmd = [sys.executable, "-m", "pip", "install", "schemathesis", "--break-system-packages"]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True)
+            return
+        except subprocess.CalledProcessError:
+            subprocess.run([sys.executable, "-m", "pip", "install", "schemathesis"], check=True, capture_output=True)
+
+    def install_cosign(self):
+        """Installs Cosign from official GitHub release."""
+        tag = "v2.4.1"
+        ext = "exe" if self.os_type == "windows" else ""
+        binary_name = f"cosign-windows-{self.arch_norm}.exe" if self.os_type == "windows" else f"cosign-linux-{self.arch_norm}"
+        url = f"https://github.com/sigstore/cosign/releases/download/{tag}/{binary_name}"
+
+        target_file = self.install_dir / ("cosign.exe" if self.os_type == "windows" else "cosign")
+        urllib.request.urlretrieve(url, target_file)
+        target_file.chmod(0o755)
+
+    def install_kubelinter(self):
+        """Installs KubeLinter from official GitHub release."""
+        tag = "v0.6.8"
+        os_name = "windows" if self.os_type == "windows" else "linux"
+        archive_ext = "zip" if self.os_type == "windows" else "tar.gz"
+        archive_name = f"kube-linter-{os_name}-{self.arch_norm}.{archive_ext}"
+        url = f"https://github.com/stackrox/kube-linter/releases/download/{tag}/{archive_name}"
+
+        archive_path = self.install_dir / archive_name
+        urllib.request.urlretrieve(url, archive_path)
+
+        if archive_ext == "zip":
+            with zipfile.ZipFile(archive_path, 'r') as zf:
+                zf.extractall(self.install_dir)
+        else:
+            with tarfile.open(archive_path, "r:gz") as tf:
+                tf.extractall(self.install_dir)
+
+        archive_path.unlink(missing_ok=True)
+        bin_file = self.install_dir / ("kube-linter.exe" if self.os_type == "windows" else "kube-linter")
+        if bin_file.exists():
+            bin_file.chmod(0o755)
