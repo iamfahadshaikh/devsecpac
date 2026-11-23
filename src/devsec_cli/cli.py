@@ -217,7 +217,7 @@ def main():
 
     # scan command
     scan_parser = subparsers.add_parser("scan", help="Run full security scan against target path or remote Git repo")
-    scan_parser.add_argument("target", nargs="?", default=".", help="Local target path to scan (default: current directory)")
+    scan_parser.add_argument("target", nargs="?", default=None, help="Local target path to scan (use '.' for current folder)")
     scan_parser.add_argument("-r", "--repo", help="Remote Git repository URL (HTTPS or SSH, e.g. https://github.com/org/repo.git)")
     scan_parser.add_argument("-b", "--branch", help="Specific branch/tag to checkout for remote repository scan")
     scan_parser.add_argument("--token", help="PAT / Token for private HTTPS repository ingestion")
@@ -244,7 +244,14 @@ def main():
         run_setup()
         sys.exit(0)
     elif args.command == "scan":
-        target = Path(args.target).resolve()
+        # Target must be explicitly '.' or a specific local directory, OR -r/--repo must be provided
+        if not args.repo and args.target is None:
+            console.print("[bold red][ERROR] Target not specified.[/bold red]")
+            console.print("Please provide a target directory (use [bold cyan].[/bold cyan] for current folder) or [bold cyan]-r / --repo <url>[/bold cyan] for a remote Git repository.\n")
+            scan_parser.print_help()
+            sys.exit(1)
+
+        target = Path(args.target).resolve() if args.target else Path(".").resolve()
         code = run_scan(
             target_path=target,
             output_json=Path(args.json),
