@@ -188,6 +188,18 @@ def run_scan(
         total_med = sum(r.findings.medium for r in results)
         total_low = sum(r.findings.low for r in results)
 
+        # Notify user with actionable guidance if SonarQube was skipped
+        sonar_result = next((r for r in results if r.tool_name == "SonarQube"), None)
+        if sonar_result and sonar_result.status == StatusEnum.SKIPPED and "unreachable" in sonar_result.summary.lower():
+            console.print("[bold yellow]Tip: How to Enable SonarQube[/bold yellow]")
+            console.print("  SonarQube was skipped because no running SonarQube server was detected.")
+            console.print("  To enable SonarQube analysis:")
+            console.print("    1. Start SonarQube in Docker: [cyan]docker run -d --name sonarqube -p 9000:9000 sonarqube:lts-community[/cyan]")
+            console.print("    2. Export environment variables:")
+            console.print("       [cyan]export SONAR_HOST_URL=\"http://localhost:9000\"[/cyan]")
+            console.print("       [cyan]export SONAR_TOKEN=\"squ_your_token_here\"[/cyan]")
+            console.print("  [dim]Note: GitHub CodeQL is already active and performing deep-AST SAST analysis.[/dim]\n")
+
         if (total_crit + total_high) > 0 or (strict and total_med > 0):
             console.print(
                 f"[bold red][FAIL] Quality Gate FAILED[/bold red] "
