@@ -50,3 +50,5 @@ devsec-summary.md
 .idea/
 .DS_Store
 Thumbs.db
+reports/
+github-urls.txt

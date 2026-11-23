@@ -184,10 +184,14 @@ class Reporter:
                 md.append(f"| **{item.severity}** | {item.tool} | {loc} | `{item.rule}` | {item.description} |")
             md.append("\n")
 
+        if output_path.parent:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("\n".join(md), encoding="utf-8")
 
     def export_json_report(self, results: List[ToolResult], output_path: Path):
         """Consolidates status.json outputs into one JSON report."""
+        if output_path.parent:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
         report = {
             "total_tools": len(results),
             "summary": {
