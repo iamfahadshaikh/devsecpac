@@ -115,9 +115,16 @@ class SonarQubeScanner(BaseScanner):
             req = urllib.request.Request(f"{sonar_host.rstrip('/')}/api/system/status")
             with urllib.request.urlopen(req, timeout=3) as resp:
                 data = json.loads(resp.read().decode())
+                # Return True if status is UP or STARTING
                 return data.get("status") in ("UP", "STARTING")
         except Exception:
-            return False
+            # Fallback: check if root endpoint responds
+            try:
+                req = urllib.request.Request(sonar_host.rstrip('/'))
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    return resp.status in (200, 302)
+            except Exception:
+                return False
 
     def _auto_generate_token(self, sonar_host: str) -> str:
         """Attempts to auto-generate a devsec-cli token using default admin:admin."""
@@ -197,6 +204,9 @@ class SonarQubeScanner(BaseScanner):
             sonar_token = self._auto_generate_token(sonar_host)
             if sonar_token:
                 console.print(f"  * [bold green][OK][/bold green] SonarQube connected with auto-generated token: [dim]{sonar_token[:12]}...[/dim]")
+
+        # If still no token, pass empty or let sonar-scanner try anonymous/default
+        console.print(f"  * SonarQube Target Host: [bold cyan]{sonar_host}[/bold cyan]")
 
         project_key = target_dir.name
 
