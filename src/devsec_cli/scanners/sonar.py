@@ -241,8 +241,9 @@ class SonarQubeScanner(BaseScanner):
             err_msg = (stderr.strip() + "\n" + stdout.strip()).strip()
             # Print full sonar-scanner failure details so user can see exact issue
             console.print(f"  * [bold red][FAIL][/bold red] SonarQube Scanner Failed (Exit Code: {code}):")
-            for line in err_msg.splitlines()[-10:]:
-                console.print(f"    [red]{line}[/red]")
+            for line in err_msg.splitlines():
+                if "ERROR:" in line or "Exception" in line or "Caused by:" in line or "EXECUTION FAILURE" in line:
+                    console.print(f"    [red]{line}[/red]")
             return self.create_skipped_result("SonarQube analysis failed")
 
         # Query REST API for detailed findings
