@@ -2,23 +2,18 @@
 
 from pathlib import Path
 import os
-from .base import BaseScanner
-from ..contracts import ToolResult, StatusEnum, FindingCounts, FindingDetail
-from ..runner import ProcessRunner
-from ..discovery import TargetDiscovery
-
-
-"""SonarQube SAST and Quality Gate Scanner."""
-
-from pathlib import Path
-import os
 import json
+import time
 import urllib.request
 import base64
+from rich.prompt import Confirm
+from rich.console import Console
 from .base import BaseScanner
 from ..contracts import ToolResult, StatusEnum, FindingCounts, FindingDetail
 from ..runner import ProcessRunner
 from ..discovery import TargetDiscovery
+
+console = Console()
 
 
 class SonarQubeScanner(BaseScanner):
@@ -114,6 +109,68 @@ class SonarQubeScanner(BaseScanner):
 
         return findings, items
 
+    def _check_server_reachable(self, sonar_host: str) -> bool:
+        """Checks if SonarQube server is reachable."""
+        try:
+            req = urllib.request.Request(f"{sonar_host.rstrip('/')}/api/system/status")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode())
+                return data.get("status") in ("UP", "STARTING")
+        except Exception:
+            return False
+
+    def _auto_generate_token(self, sonar_host: str) -> str:
+        """Attempts to auto-generate a devsec-cli token using default admin:admin."""
+        try:
+            url = f"{sonar_host.rstrip('/')}/api/user_tokens/generate?name=devsec-cli-{int(time.time())}"
+            req = urllib.request.Request(url, method="POST")
+            auth_str = base64.b64encode(b"admin:admin").decode()
+            req.add_header("Authorization", f"Basic {auth_str}")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+                return data.get("token", "")
+        except Exception:
+            return ""
+
+    def _prompt_start_sonarqube(self, sonar_host: str) -> str:
+        """Prompts user if they want to start a local SonarQube container automatically."""
+        import sys
+        if not sys.stdin.isatty():
+            return ""
+
+        docker_bin = ProcessRunner.find_binary("docker")
+        if not docker_bin:
+            return ""
+
+        console.print("\n[bold yellow]SonarQube server is not reachable.[/bold yellow]")
+        if not Confirm.ask("Would you like devsec to launch a SonarQube container via Docker?"):
+            return ""
+
+        # Check if container named 'sonarqube' already exists
+        code, stdout, _, _ = ProcessRunner.run_command([docker_bin, "ps", "-a", "--filter", "name=sonarqube", "--format", "{{.Names}}"])
+        if "sonarqube" in stdout:
+            console.print("  * Starting existing [bold cyan]sonarqube[/bold cyan] container...")
+            ProcessRunner.run_command([docker_bin, "start", "sonarqube"])
+        else:
+            console.print("  * Pulling and starting [bold cyan]sonarqube:lts-community[/bold cyan] on port 9000...")
+            ProcessRunner.run_command([
+                docker_bin, "run", "-d", "--name", "sonarqube",
+                "-p", "9000:9000", "sonarqube:lts-community"
+            ])
+
+        # Wait for SonarQube to be UP
+        with console.status("[bold blue]Waiting for SonarQube server to become ready (this may take up to 45s)...[/bold blue]"):
+            for _ in range(60):
+                if self._check_server_reachable(sonar_host):
+                    break
+                time.sleep(2)
+
+        # Attempt auto-generating token
+        token = self._auto_generate_token(sonar_host)
+        if token:
+            console.print(f"  * [bold green][OK][/bold green] Generated analysis token: [dim]{token[:12]}...[/dim]")
+        return token
+
     def scan(self, target_dir: Path) -> ToolResult:
         discovery = TargetDiscovery(target_dir)
         languages = discovery.detect_languages()
@@ -126,6 +183,21 @@ class SonarQubeScanner(BaseScanner):
 
         sonar_host = os.environ.get("SONAR_HOST_URL", "http://localhost:9000")
         sonar_token = self._resolve_token()
+
+        # If not reachable and no token, prompt user to start it or auto-connect
+        if not self._check_server_reachable(sonar_host):
+            new_token = self._prompt_start_sonarqube(sonar_host)
+            if new_token:
+                sonar_token = new_token
+            elif not self._check_server_reachable(sonar_host):
+                return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
+
+        # If server is reachable but token is still missing, try auto-generating or using default
+        if not sonar_token and self._check_server_reachable(sonar_host):
+            sonar_token = self._auto_generate_token(sonar_host)
+            if sonar_token:
+                console.print(f"  * [bold green][OK][/bold green] SonarQube connected with auto-generated token: [dim]{sonar_token[:12]}...[/dim]")
+
         project_key = target_dir.name
 
         cmd = [
