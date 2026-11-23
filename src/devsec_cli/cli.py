@@ -26,6 +26,7 @@ from .scanners.nmap import NmapScanner
 from .scanners.semgrep import SemgrepScanner
 from .scanners.kubelinter import KubeLinterScanner
 from .scanners.schemathesis import SchemathesisScanner
+from .scanners.cosign import CosignAttestationEngine
 
 
 console = Console()
@@ -46,6 +47,7 @@ def build_scanners():
         TrivyFSScanner(),
         DependencyCheckScanner(),
         SyftScanner(),
+        CosignAttestationEngine(),
         OWASPZAPScanner(),
         SchemathesisScanner(),
         NmapScanner(),
