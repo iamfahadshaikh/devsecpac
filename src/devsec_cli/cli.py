@@ -279,10 +279,11 @@ def main():
         if not report_file.exists():
             console.print(f"[bold red][ERROR] Report file not found: {report_file}[/bold red]")
             sys.exit(1)
-        comment_md = CICDIntegrator.generate_pr_comment([])
+        results = CICDIntegrator.load_results_from_json(report_file)
+        comment_md = CICDIntegrator.generate_pr_comment(results)
         out_path = Path(args.output)
         out_path.write_text(comment_md, encoding="utf-8")
-        console.print(f"[bold green][OK][/bold green] Generated PR Markdown comment at: [bold cyan]{out_path.name}[/bold cyan]")
+        console.print(f"[bold green][OK][/bold green] Generated PR Markdown comment at: [bold cyan]{out_path}[/bold cyan]")
         sys.exit(0)
     elif args.command == "fix":
         from .remediation import RemediationEngine

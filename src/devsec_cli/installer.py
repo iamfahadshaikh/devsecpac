@@ -13,7 +13,7 @@ import shutil
 import tarfile
 import zipfile
 import subprocess
-import urllib.request
+import requests
 import json
 from pathlib import Path
 from typing import Optional, List
@@ -116,14 +116,13 @@ class ToolInstaller:
             return False
 
     def _download_file(self, url: str, dest: Path):
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) devsec-cli/0.1.0"
-            }
-        )
-        with urllib.request.urlopen(req, timeout=180) as response, open(dest, "wb") as out_file:
-            shutil.copyfileobj(response, out_file)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) devsec-cli/0.1.0"
+        }
+        with requests.get(url, headers=headers, stream=True, timeout=180) as r:
+            r.raise_for_status()
+            with open(dest, "wb") as out_file:
+                shutil.copyfileobj(r.raw, out_file)
 
     def install_gitleaks(self):
         ver = "8.18.4"

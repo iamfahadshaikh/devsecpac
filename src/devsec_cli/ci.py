@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import List, Dict
 import json
 import os
-import urllib.request
+import requests
 from rich.console import Console
-from .contracts import ToolResult, FindingDetail, FindingCounts
+from .contracts import ToolResult, FindingDetail, FindingCounts, StatusEnum
 from .correlator import FindingCorrelator
 
 console = Console()
@@ -14,6 +14,49 @@ console = Console()
 
 class CICDIntegrator:
     """Provides GitHub Actions / GitLab CI PR commenting and DefectDojo push integrations."""
+
+    @classmethod
+    def load_results_from_json(cls, json_path: Path) -> List[ToolResult]:
+        """Loads and reconstructs ToolResult objects from devsec-report.json."""
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        results: List[ToolResult] = []
+        raw_results = data.get("results", [])
+        for item in raw_results:
+            findings_data = item.get("findings", {})
+            fc = FindingCounts(
+                critical=findings_data.get("critical", 0),
+                high=findings_data.get("high", 0),
+                medium=findings_data.get("medium", 0),
+                low=findings_data.get("low", 0),
+                info=findings_data.get("info", 0)
+            )
+            raw_items = item.get("items", [])
+            detail_items = [
+                FindingDetail(
+                    severity=d.get("severity", "MEDIUM"),
+                    tool=d.get("tool", item.get("tool_name", "")),
+                    file=d.get("file", ""),
+                    line=str(d.get("line", "")),
+                    rule=d.get("rule", ""),
+                    description=d.get("description", "")
+                )
+                for d in raw_items
+            ]
+            res = ToolResult(
+                tool_name=item.get("tool_name", ""),
+                category=item.get("category", ""),
+                status=StatusEnum(item.get("status", "PASS")),
+                exit_code=item.get("exit_code", 0),
+                summary=item.get("summary", ""),
+                findings=fc,
+                duration_seconds=float(item.get("duration_seconds", 0.0)),
+                items=detail_items,
+                details=item.get("details", {})
+            )
+            results.append(res)
+        return results
 
     @staticmethod
     def generate_pr_comment(results: List[ToolResult]) -> str:
@@ -72,25 +115,18 @@ class CICDIntegrator:
 
         try:
             url = f"{dojo_url.rstrip('/')}/api/v2/import-scan/"
-            boundary = "----DevSecDojoBoundary12345"
             headers = {
-                "Authorization": f"Token {api_key}",
-                "Content-Type": f"multipart/form-data; boundary={boundary}"
+                "Authorization": f"Token {api_key}"
             }
-            body = (
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="scan_type"\r\n\r\nGeneric Findings Import\r\n'
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="engagement"\r\n\r\n{engagement_id}\r\n'
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="file"; filename="{json_report_path.name}"\r\n'
-                f"Content-Type: application/json\r\n\r\n{json_report_path.read_text(encoding='utf-8')}\r\n"
-                f"--{boundary}--\r\n"
-            ).encode("utf-8")
-
-            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return resp.status in (200, 201)
+            files = {
+                "file": (json_report_path.name, json_report_path.read_text(encoding="utf-8"), "application/json")
+            }
+            data = {
+                "scan_type": "Generic Findings Import",
+                "engagement": str(engagement_id)
+            }
+            resp = requests.post(url, headers=headers, files=files, data=data, timeout=30)
+            return resp.status_code in (200, 201)
         except Exception as e:
             console.print(f"[bold red][FAIL][/bold red] DefectDojo push error: {str(e)}")
             return False

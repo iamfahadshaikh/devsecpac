@@ -4,7 +4,7 @@ from pathlib import Path
 import os
 import json
 import time
-import urllib.request
+import requests
 import base64
 from rich.prompt import Confirm
 from rich.console import Console
@@ -67,15 +67,12 @@ class SonarQubeScanner(BaseScanner):
         items = []
 
         try:
-            url = f"{sonar_host.rstrip('/')}/api/issues/search?componentKeys={project_key}&ps=100"
-            req = urllib.request.Request(url)
-            if sonar_token:
-                # Sonar accepts token as Basic Auth username with empty password
-                auth_str = base64.b64encode(f"{sonar_token}:".encode()).decode()
-                req.add_header("Authorization", f"Basic {auth_str}")
-
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode())
+            url = f"{sonar_host.rstrip('/')}/api/issues/search"
+            params = {"componentKeys": project_key, "ps": "100"}
+            auth = (sonar_token, "") if sonar_token else None
+            resp = requests.get(url, params=params, auth=auth, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
                 issues = data.get("issues", [])
 
                 for issue in issues:
@@ -131,11 +128,11 @@ class SonarQubeScanner(BaseScanner):
     def _check_server_reachable(self, sonar_host: str) -> bool:
         """Checks if SonarQube server is reachable and active."""
         try:
-            req = urllib.request.Request(f"{sonar_host.rstrip('/')}/api/system/status")
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode())
-                # Return True only if status is strictly UP
+            resp = requests.get(f"{sonar_host.rstrip('/')}/api/system/status", timeout=3)
+            if resp.status_code == 200:
+                data = resp.json()
                 return data.get("status") == "UP"
+            return False
         except Exception:
             return False
 
@@ -143,15 +140,12 @@ class SonarQubeScanner(BaseScanner):
         """Attempts to auto-generate a devsec-cli token using default admin:admin."""
         try:
             url = f"{sonar_host.rstrip('/')}/api/user_tokens/generate"
-            params = f"name=devsec-cli-{int(time.time())}".encode("utf-8")
-            req = urllib.request.Request(url, data=params, method="POST")
-            auth_str = base64.b64encode(b"admin:admin").decode()
-            req.add_header("Authorization", f"Basic {auth_str}")
-            req.add_header("Content-Type", "application/x-www-form-urlencoded")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode())
-                return data.get("token", "")
-        except Exception as e:
+            data = {"name": f"devsec-cli-{int(time.time())}"}
+            resp = requests.post(url, data=data, auth=("admin", "admin"), timeout=5)
+            if resp.status_code == 200:
+                return resp.json().get("token", "")
+            return ""
+        except Exception:
             return ""
 
     def _prompt_start_sonarqube(self, sonar_host: str) -> str:
@@ -219,13 +213,17 @@ class SonarQubeScanner(BaseScanner):
         # Verify token by testing /api/authentication/validate
         if sonar_token:
             try:
-                val_req = urllib.request.Request(f"{sonar_host.rstrip('/')}/api/authentication/validate")
-                auth_str = base64.b64encode(f"{sonar_token}:".encode()).decode()
-                val_req.add_header("Authorization", f"Basic {auth_str}")
-                with urllib.request.urlopen(val_req, timeout=3) as val_resp:
-                    val_data = json.loads(val_resp.read().decode())
+                val_resp = requests.get(
+                    f"{sonar_host.rstrip('/')}/api/authentication/validate",
+                    auth=(sonar_token, ""),
+                    timeout=3
+                )
+                if val_resp.status_code == 200:
+                    val_data = val_resp.json()
                     if not val_data.get("valid"):
                         sonar_token = ""
+                else:
+                    sonar_token = ""
             except Exception:
                 sonar_token = ""
 
