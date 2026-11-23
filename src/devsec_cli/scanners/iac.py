@@ -143,7 +143,7 @@ class KubeconformScanner(BaseScanner):
                     
                     resources = data.get("resources", [])
                     for res in resources:
-                        if res.get("status") in ("Invalid", "Error"):
+                        if res.get("status") in ("Invalid", "Error", "statusError", "statusInvalid"):
                             items.append(
                                 FindingDetail(
                                     severity="HIGH",
