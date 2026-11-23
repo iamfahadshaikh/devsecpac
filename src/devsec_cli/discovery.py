@@ -70,14 +70,9 @@ class TargetDiscovery:
         for lang, files in patterns.items():
             found_files = []
             for pattern in files:
-                if "*" in pattern:
-                    for p in self.target_dir.rglob(pattern):
-                        if p.is_file() and not self._should_ignore(p):
-                            found_files.append(p.name)
-                else:
-                    for p in self.target_dir.rglob(pattern):
-                        if p.is_file() and not self._should_ignore(p):
-                            found_files.append(p.name)
+                for p in self.target_dir.rglob(pattern):
+                    if p.is_file() and not self._should_ignore(p):
+                        found_files.append(p.name)
             if found_files:
                 detected[lang] = sorted(list(set(found_files)))
 
