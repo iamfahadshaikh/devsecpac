@@ -129,21 +129,15 @@ class SonarQubeScanner(BaseScanner):
         return findings, items
 
     def _check_server_reachable(self, sonar_host: str) -> bool:
-        """Checks if SonarQube server is reachable."""
+        """Checks if SonarQube server is reachable and active."""
         try:
             req = urllib.request.Request(f"{sonar_host.rstrip('/')}/api/system/status")
             with urllib.request.urlopen(req, timeout=3) as resp:
                 data = json.loads(resp.read().decode())
-                # Return True if status is UP or STARTING
-                return data.get("status") in ("UP", "STARTING")
+                # Return True only if status is strictly UP
+                return data.get("status") == "UP"
         except Exception:
-            # Fallback: check if root endpoint responds
-            try:
-                req = urllib.request.Request(sonar_host.rstrip('/'))
-                with urllib.request.urlopen(req, timeout=3) as resp:
-                    return resp.status in (200, 302)
-            except Exception:
-                return False
+            return False
 
     def _auto_generate_token(self, sonar_host: str) -> str:
         """Attempts to auto-generate a devsec-cli token using default admin:admin."""
@@ -243,14 +237,16 @@ class SonarQubeScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
         if code != 0:
-            err_msg = stderr.strip() or stdout.strip()
+            err_msg = (stderr.strip() + "\n" + stdout.strip()).strip()
             # Extract relevant error line from sonar-scanner output if available
-            short_err = "SonarQube analysis failed or server unreachable"
+            short_err = "SonarQube analysis failed"
             for line in err_msg.splitlines():
-                if "ERROR:" in line or "Exception" in line or "Unauthorized" in line:
-                    short_err = line.strip()
+                clean = line.strip()
+                if "ERROR:" in clean or "Unauthorized" in clean or "Fail to download plugin" in clean or "Failed to query" in clean or "Execution failed" in clean:
+                    short_err = clean
                     break
-            return self.create_skipped_result(f"{short_err} (export SONAR_HOST_URL & SONAR_TOKEN)")
+            console.print(f"  * [bold red][FAIL][/bold red] SonarQube Scanner Error: {short_err}")
+            return self.create_skipped_result(f"{short_err}")
 
         # Query REST API for detailed findings
         findings, items = self._fetch_sonar_issues(sonar_host, sonar_token, project_key)
