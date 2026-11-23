@@ -25,6 +25,7 @@ from .scanners.mobsf import MobSFScanner
 from .scanners.nmap import NmapScanner
 from .scanners.semgrep import SemgrepScanner
 from .scanners.kubelinter import KubeLinterScanner
+from .scanners.schemathesis import SchemathesisScanner
 
 
 console = Console()
@@ -46,6 +47,7 @@ def build_scanners():
         DependencyCheckScanner(),
         SyftScanner(),
         OWASPZAPScanner(),
+        SchemathesisScanner(),
         NmapScanner(),
         MobSFScanner(),
         K8sStructuralAuditScanner(),
