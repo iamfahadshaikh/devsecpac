@@ -262,6 +262,11 @@ def main():
     fix_parser.add_argument("--apply", action="store_true", help="Directly apply patches to files instead of just generating patch file")
     fix_parser.add_argument("--patch-output", default="devsec-fix.patch", help="Path for output unified git patch file")
 
+    # pr-comment command
+    pr_parser = subparsers.add_parser("pr-comment", help="Generate or post interactive GitHub PR comment from scan results")
+    pr_parser.add_argument("--json", default="devsec-report.json", help="Path of existing scan JSON report")
+    pr_parser.add_argument("--output", default="devsec-pr-comment.md", help="Path to write PR markdown comment")
+
     args = parser.parse_args()
 
     if args.command == "info":
@@ -269,6 +274,17 @@ def main():
         sys.exit(0)
     elif args.command == "setup":
         run_setup()
+        sys.exit(0)
+    elif args.command == "pr-comment":
+        from .ci import CICDIntegrator
+        report_file = Path(args.json)
+        if not report_file.exists():
+            console.print(f"[bold red][ERROR] Report file not found: {report_file}[/bold red]")
+            sys.exit(1)
+        comment_md = CICDIntegrator.generate_pr_comment([])
+        out_path = Path(args.output)
+        out_path.write_text(comment_md, encoding="utf-8")
+        console.print(f"[bold green][OK][/bold green] Generated PR Markdown comment at: [bold cyan]{out_path.name}[/bold cyan]")
         sys.exit(0)
     elif args.command == "fix":
         from .remediation import RemediationEngine
