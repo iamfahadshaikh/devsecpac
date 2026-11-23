@@ -20,11 +20,30 @@ class SonarQubeScanner(BaseScanner):
     def __init__(self):
         super().__init__(name="SonarQube", category="Code Quality & SAST", binary_name="sonar-scanner")
 
+    def _save_cached_token(self, token: str):
+        """Caches auto-generated token to ~/.devsec/sonar_token for future scans."""
+        try:
+            cache_file = Path.home() / ".devsec" / "sonar_token"
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(token.strip(), encoding="utf-8")
+        except Exception:
+            pass
+
     def _resolve_token(self) -> str:
-        """Finds SonarQube token from environment or global sonar-scanner.properties config."""
+        """Finds SonarQube token from environment, devsec cache, or global sonar-scanner.properties config."""
         token = os.environ.get("SONAR_TOKEN", "")
         if token:
             return token
+
+        # Check ~/.devsec/sonar_token cache
+        cache_file = Path.home() / ".devsec" / "sonar_token"
+        if cache_file.exists():
+            try:
+                cached = cache_file.read_text(encoding="utf-8").strip()
+                if cached:
+                    return cached
+            except Exception:
+                pass
 
         # Check ~/.local/bin/sonar-scanner-*/conf/sonar-scanner.properties or /etc
         search_paths = [
@@ -175,6 +194,7 @@ class SonarQubeScanner(BaseScanner):
         # Attempt auto-generating token
         token = self._auto_generate_token(sonar_host)
         if token:
+            self._save_cached_token(token)
             console.print(f"  * [bold green][OK][/bold green] Generated analysis token: [dim]{token[:12]}...[/dim]")
         return token
 
@@ -203,6 +223,7 @@ class SonarQubeScanner(BaseScanner):
         if not sonar_token and self._check_server_reachable(sonar_host):
             sonar_token = self._auto_generate_token(sonar_host)
             if sonar_token:
+                self._save_cached_token(sonar_token)
                 console.print(f"  * [bold green][OK][/bold green] SonarQube connected with auto-generated token: [dim]{sonar_token[:12]}...[/dim]")
 
         # If still no token, pass empty or let sonar-scanner try anonymous/default
