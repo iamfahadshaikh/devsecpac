@@ -231,8 +231,9 @@ class SonarQubeScanner(BaseScanner):
             f"-Dsonar.sources={target_dir}",
             f"-Dsonar.host.url={sonar_host}"
         ]
+        # SonarQube token supports both -Dsonar.token and -Dsonar.login
         if sonar_token:
-            cmd.append(f"-Dsonar.token={sonar_token}")
+            cmd.extend([f"-Dsonar.token={sonar_token}", f"-Dsonar.login={sonar_token}"])
 
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
