@@ -40,6 +40,13 @@ RUN codeql pack download codeql/javascript-queries codeql/python-queries || true
 # Set workspace directory for targets
 WORKDIR /workspace
 
+# Create an unprivileged devsec user and adjust permissions
+RUN useradd -u 10001 -m devsecuser && \
+    mkdir -p /workspace && \
+    chown -R devsecuser:devsecuser /workspace
+
+USER devsecuser
+
 # Default entrypoint to devsec CLI
 ENTRYPOINT ["devsec"]
 CMD ["scan", "--help"]

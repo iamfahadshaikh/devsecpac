@@ -233,12 +233,6 @@ class ToolInstaller:
         tmp_archive.unlink(missing_ok=True)
 
     def install_syft(self):
-        if self.os_type in ("linux", "darwin") and shutil.which("curl"):
-            cmd = f"curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b {self.install_dir}"
-            res = subprocess.run(cmd, shell=True, capture_output=True)
-            if res.returncode == 0:
-                return
-
         ver = "1.18.0"
         os_str = "windows" if self.os_type == "windows" else ("linux" if self.os_type == "linux" else "darwin")
         ext = "zip" if self.os_type == "windows" else "tar.gz"
@@ -455,6 +449,6 @@ class ToolInstaller:
         url = f"https://github.com/sigstore/cosign/releases/download/{tag}/{binary_name}"
 
         target_file = self.install_dir / ("cosign.exe" if self.os_type == "windows" else "cosign")
-        urllib.request.urlretrieve(url, target_file)
+        self._download_file(url, target_file)
         target_file.chmod(0o755)
 
