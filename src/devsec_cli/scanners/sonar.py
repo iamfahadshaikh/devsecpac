@@ -238,15 +238,11 @@ class SonarQubeScanner(BaseScanner):
 
         if code != 0:
             err_msg = (stderr.strip() + "\n" + stdout.strip()).strip()
-            # Extract relevant error line from sonar-scanner output if available
-            short_err = "SonarQube analysis failed"
-            for line in err_msg.splitlines():
-                clean = line.strip()
-                if "ERROR:" in clean or "Unauthorized" in clean or "Fail to download plugin" in clean or "Failed to query" in clean or "Execution failed" in clean:
-                    short_err = clean
-                    break
-            console.print(f"  * [bold red][FAIL][/bold red] SonarQube Scanner Error: {short_err}")
-            return self.create_skipped_result(f"{short_err}")
+            # Print full sonar-scanner failure details so user can see exact issue
+            console.print(f"  * [bold red][FAIL][/bold red] SonarQube Scanner Failed (Exit Code: {code}):")
+            for line in err_msg.splitlines()[-10:]:
+                console.print(f"    [red]{line}[/red]")
+            return self.create_skipped_result("SonarQube analysis failed")
 
         # Query REST API for detailed findings
         findings, items = self._fetch_sonar_issues(sonar_host, sonar_token, project_key)
