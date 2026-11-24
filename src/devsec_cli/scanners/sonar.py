@@ -213,18 +213,9 @@ class SonarQubeScanner(BaseScanner):
         sonar_host = os.environ.get("SONAR_HOST_URL", "http://localhost:9000")
         sonar_token = self._resolve_token()
 
-        # If not reachable and no token, check if we can reach it or skip gracefully
+        # If not reachable and no token, skip gracefully without blocking the pipeline
         if not self._check_server_reachable(sonar_host):
-            # Never hang inside non-interactive or automated progress bars
-            # Only prompt if running in an interactive TTY and not on Windows without Docker daemon
-            if not self._is_docker_running():
-                return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
-
-            new_token = self._prompt_start_sonarqube(sonar_host)
-            if new_token:
-                sonar_token = new_token
-            elif not self._check_server_reachable(sonar_host):
-                return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
+            return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
 
         # When new container was created, old conf properties has old token that fails
         # Verify token by testing /api/authentication/validate
