@@ -93,14 +93,19 @@ devsec scan . --defectdojo-push \
   --defectdojo-engagement 1
 ```
 
-### 4. Automated Remediation (`devsec fix`)
-Generate remediation patches or apply fixes automatically:
+### 4. Remediation Suggestions (`devsec fix`)
+Generate recommended unified Git patch file for fixable issues:
 ```bash
-# Preview remediation patches
-devsec fix --json devsec-report.json --patch-output fixes.patch
+# Generate recommended remediation patch
+devsec fix . --patch-output devsec-fix.patch
 
-# Apply fixes directly to codebase
-devsec fix --json devsec-report.json --apply
+# Review the suggested patch
+git diff --no-index /dev/null devsec-fix.patch
+# or inspect the patch directly
+cat devsec-fix.patch
+
+# Apply when ready
+git apply devsec-fix.patch
 ```
 
 ### 5. Pull Request Commenting (`devsec pr-comment`)
@@ -133,7 +138,9 @@ devsec pr-comment --json devsec-report.json --output reports/github-pr-comment.m
 
 ---
 
-## CI/CD Pipeline Integration (GitHub Actions Example)
+## CI/CD Pipeline Integrations
+
+### 1. GitHub Actions (PR Commenting)
 
 ```yaml
 name: DevSecOps Autonomous Pipeline
@@ -158,6 +165,7 @@ jobs:
 
       - name: Run Security Scan
         run: devsec scan . --json devsec-report.json --md devsec-summary.md
+        continue-on-error: true
 
       - name: Generate PR Comment
         if: always()
@@ -169,6 +177,48 @@ jobs:
         with:
           path: pr-comment.md
 ```
+
+### 2. Azure DevOps Pipelines (Build Summary & PR Commenting)
+
+In Azure DevOps, you can publish the summary directly to the **Pipeline Run Summary tab** using `Write-Host "##vso[task.uploadsummary]"` or post an active PR thread comment via the Azure DevOps REST API:
+
+```yaml
+trigger:
+  - main
+pr:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.11'
+
+  - script: |
+      pip install -e .
+      devsec scan . --json devsec-report.json --md devsec-summary.md
+    displayName: 'Run Autonomous DevSecOps Scan'
+    continueOnError: true
+
+  - script: |
+      devsec pr-comment --json devsec-report.json --output $(Build.ArtifactStagingDirectory)/pr-comment.md
+      # Upload to Azure DevOps native Pipeline Summary tab:
+      echo "##vso[task.uploadsummary]$(Build.ArtifactStagingDirectory)/pr-comment.md"
+    displayName: 'Publish Scan Report to Azure DevOps Pipeline Summary'
+    condition: always()
+
+  - script: |
+      # Post PR Comment directly to Azure DevOps Repos PR thread
+      COMMENT_CONTENT=$(cat $(Build.ArtifactStagingDirectory)/pr-comment.md | jq -s -R .)
+      curl -X POST \
+        -H "Authorization: Bearer $(System.AccessToken)" \
+        -H "Content-Type: application/json" \
+        -d "{\"comments\": [{\"parentCommentId\": 0, \"content\": $COMMENT_CONTENT, \"commentType\": 1}], \"status\": 1}" \
+        "$(System.CollectionUri)$(System.TeamProject)/_apis/git/repositories/$(Build.Repository.ID)/pullRequests/$(System.PullRequest.PullRequestId)/threads?api-version=6.0"
+    displayName: 'Post Comment to Azure DevOps Pull Request'
+    condition: and(always(), eq(variables['Build.Reason'], 'PullRequest'))
 
 ---
 

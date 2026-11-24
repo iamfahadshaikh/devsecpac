@@ -56,20 +56,8 @@ class RemediationEngine:
         if diff_lines:
             patch_path.write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
             console.print(f"[bold green][OK][/bold green] Generated unified remediation patch: [bold cyan]{patch_path.name}[/bold cyan] ({fixes_applied} auto-fixable issue(s))")
+            console.print(f"[dim]Tip: Review the suggested diff and apply with: git apply {patch_path.name}[/dim]")
         else:
             console.print("[dim yellow]No deterministic auto-fixes identified for current findings.[/dim yellow]")
 
         return fixes_applied
-
-    def apply_fixes(self, patch_path: Path) -> bool:
-        """Applies generated remediation patch directly to the target directory."""
-        from .runner import ProcessRunner
-        git_bin = ProcessRunner.find_binary("git")
-        if not git_bin or not patch_path.exists():
-            return False
-
-        code, stdout, stderr, _ = ProcessRunner.run_command(
-            [git_bin, "apply", str(patch_path)],
-            cwd=str(self.target_dir)
-        )
-        return code == 0

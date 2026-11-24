@@ -320,9 +320,8 @@ def main():
     subparsers.add_parser("setup", help="Auto-download and configure missing DevSecOps tools into user bin")
 
     # fix command
-    fix_parser = subparsers.add_parser("fix", help="Generate or apply automated remediation patches for detected issues")
+    fix_parser = subparsers.add_parser("fix", help="Generate recommended remediation patch for detected issues")
     fix_parser.add_argument("target", nargs="?", default=".", help="Local target path to fix (default: .)")
-    fix_parser.add_argument("--apply", action="store_true", help="Directly apply patches to files instead of just generating patch file")
     fix_parser.add_argument("--patch-output", default="devsec-fix.patch", help="Path for output unified git patch file")
 
     # pr-comment command
@@ -355,13 +354,7 @@ def main():
         target = Path(args.target).resolve()
         engine = RemediationEngine(target)
         patch_file = Path(args.patch_output)
-        fixes = engine.generate_remediation_patch([], patch_file)
-        if args.apply and fixes > 0:
-            applied = engine.apply_fixes(patch_file)
-            if applied:
-                console.print(f"[bold green][SUCCESS] Applied {fixes} remediation fix(es) directly to codebase.[/bold green]\n")
-            else:
-                console.print(f"[bold red][FAIL] Failed to automatically apply patch via git apply.[/bold red]\n")
+        engine.generate_remediation_patch([], patch_file)
         sys.exit(0)
     elif args.command == "scan":
         # Target must be explicitly '.' or a specific local directory, OR -r/--repo must be provided
