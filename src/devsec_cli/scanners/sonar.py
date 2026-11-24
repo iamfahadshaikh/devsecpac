@@ -233,7 +233,10 @@ class SonarQubeScanner(BaseScanner):
             if sonar_token:
                 self._save_cached_token(sonar_token)
 
+        # Unique project key for remote/local repositories to avoid cross-repo project collisions
         project_key = target_dir.name
+        if project_key in ("repo", "target") and target_dir.parent:
+            project_key = f"{target_dir.parent.name}_{target_dir.name}"
 
         cmd = [
             str(self.binary_path),
@@ -275,6 +278,20 @@ class SonarQubeScanner(BaseScanner):
 
         if code != 0:
             return self.create_skipped_result("SonarQube analysis failed")
+
+        # Wait briefly for SonarQube background Compute Engine processing to finalize issue indexing
+        ce_url = f"{sonar_host.rstrip('/')}/api/ce/activity"
+        auth = (sonar_token, "") if sonar_token else None
+        for _ in range(10):
+            try:
+                ce_resp = requests.get(ce_url, params={"component": project_key}, auth=auth, timeout=3)
+                if ce_resp.status_code == 200:
+                    tasks = ce_resp.json().get("tasks", [])
+                    if tasks and tasks[0].get("status") in ("SUCCESS", "FAILED"):
+                        break
+            except Exception:
+                pass
+            time.sleep(1)
 
         # Query REST API for detailed findings
         findings, items = self._fetch_sonar_issues(sonar_host, sonar_token, project_key)
