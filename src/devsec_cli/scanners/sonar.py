@@ -248,12 +248,10 @@ class SonarQubeScanner(BaseScanner):
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
         if code != 0:
-            console.print(f"  * [bold red][FAIL][/bold red] SonarQube Scanner Failed (Exit Code: {code}):")
-            if stdout:
-                console.print(f"[dim yellow]--- SonarScanner STDOUT ---[/dim yellow]\n{stdout}")
-            if stderr:
-                console.print(f"[dim red]--- SonarScanner STDERR ---[/dim red]\n{stderr}")
-            return self.create_skipped_result("SonarQube analysis failed")
+            err_reason = "SonarQube analysis failed"
+            if "sonar.java.binaries" in (stdout + stderr):
+                err_reason = "Java bytecode binaries required for SonarQube"
+            return self.create_skipped_result(err_reason)
 
         # Query REST API for detailed findings
         findings, items = self._fetch_sonar_issues(sonar_host, sonar_token, project_key)
