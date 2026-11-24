@@ -49,9 +49,12 @@ class ToolInstaller:
         bin_path = shutil.which(tool_name)
         if bin_path and Path(bin_path).is_file():
             return True
-        # Also check directly in install_dir
-        local_bin = self.install_dir / (f"{tool_name}.exe" if self.os_type == "windows" else tool_name)
-        return local_bin.is_file() and os.access(local_bin, os.X_OK)
+        # Also check directly in install_dir (handling .exe, .cmd, and bare names)
+        for ext in (".exe", ".cmd", ".bat", ""):
+            cand = self.install_dir / f"{tool_name}{ext}"
+            if cand.is_file():
+                return True
+        return False
 
     def install_all(self):
         console.print(f"\n[bold green]DevSecOps Autonomous Toolchain Installer[/bold green]")

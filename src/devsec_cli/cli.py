@@ -319,7 +319,13 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
-    # scan command
+    # 1. info command
+    subparsers.add_parser("info", help="Show environment tool discovery status")
+
+    # 2. setup command
+    subparsers.add_parser("setup", help="Auto-download and configure missing DevSecOps tools into user bin")
+
+    # 3. scan command
     scan_parser = subparsers.add_parser("scan", help="Run full security scan against target path or remote Git repo")
     scan_parser.add_argument("target", nargs="?", default=None, help="Local target path to scan (use '.' for current folder)")
     scan_parser.add_argument("-r", "--repo", help="Remote Git repository URL (HTTPS or SSH, e.g. https://github.com/org/repo.git)")
@@ -337,18 +343,12 @@ def main():
     scan_parser.add_argument("--defectdojo-key", default=os.environ.get("DEFECTDOJO_KEY", ""), help="DefectDojo API v2 Key")
     scan_parser.add_argument("--defectdojo-engagement", type=int, default=int(os.environ.get("DEFECTDOJO_ENGAGEMENT_ID", "1")), help="Target DefectDojo Engagement ID")
 
-    # info command
-    subparsers.add_parser("info", help="Show environment tool discovery status")
-
-    # setup command
-    subparsers.add_parser("setup", help="Auto-download and configure missing DevSecOps tools into user bin")
-
-    # fix command
+    # 4. fix command
     fix_parser = subparsers.add_parser("fix", help="Generate recommended remediation patch for detected issues")
     fix_parser.add_argument("target", nargs="?", default=".", help="Local target path to fix (default: .)")
     fix_parser.add_argument("--patch-output", default="devsec-fix.patch", help="Path for output unified git patch file")
 
-    # pr-comment command
+    # 5. pr-comment command
     pr_parser = subparsers.add_parser("pr-comment", help="Generate or post interactive GitHub PR comment from scan results")
     pr_parser.add_argument("--json", default="devsec-report.json", help="Path of existing scan JSON report")
     pr_parser.add_argument("--output", default="devsec-pr-comment.md", help="Path to write PR markdown comment")
