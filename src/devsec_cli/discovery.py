@@ -14,11 +14,14 @@ class TargetDiscovery:
 
     LANG_PATTERNS = {
         "nodejs": {"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"},
-        "python": {"requirements.txt", "pyproject.toml", "pipfile", "setup.py"},
+        "python": {"requirements.txt", "pyproject.toml", "pipfile", "setup.py", "manage.py", "wsgi.py", "asgi.py"},
         "java": {"pom.xml", "build.gradle", "build.gradle.kts"},
         "golang": {"go.mod", "go.sum"},
         "rust": {"cargo.toml", "cargo.lock"},
         "dotnet": {".csproj", ".fsproj", ".sln"},
+        "dart": {"pubspec.yaml", "pubspec.lock"},
+        "php": {"composer.json", "composer.lock"},
+        "ruby": {"gemfile", "gemfile.lock"}
     }
 
     def __init__(self, target_dir: Path):
