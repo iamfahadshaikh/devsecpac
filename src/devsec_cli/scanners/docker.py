@@ -26,8 +26,10 @@ class HadolintScanner(BaseScanner):
         items = []
         total_issues = 0
         total_time = 0.0
+        file_timings = {}
 
         for df in dockerfiles:
+            rel_file = str(Path(df).relative_to(target_dir)) if str(df).startswith(str(target_dir)) else Path(df).name
             cmd = [
                 str(self.binary_path),
                 "--format", "json",
@@ -35,6 +37,7 @@ class HadolintScanner(BaseScanner):
             ]
             code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir))
             total_time += elapsed
+            file_timings[rel_file] = round(elapsed, 3)
 
             if stdout.strip():
                 try:
@@ -83,5 +86,7 @@ class HadolintScanner(BaseScanner):
             summary=summary,
             findings=findings,
             duration_seconds=round(total_time, 2),
+            files_scanned=len(dockerfiles),
+            file_timings=file_timings,
             items=items
         )

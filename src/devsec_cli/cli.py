@@ -1,7 +1,9 @@
 """devsecpac / devsec-cli main entrypoint."""
 
 import argparse
+import os
 import sys
+import time
 from pathlib import Path
 from typing import List, Optional
 from rich.console import Console
@@ -139,15 +141,18 @@ def run_scan(
     console.print(f"\n[bold green]Initiating DevSecOps Scan on:[/bold green] [bold white]{target_path.resolve()}[/bold white]\n")
 
     try:
-        # Stack discovery
+        # Stack and File discovery
         discovery = TargetDiscovery(target_path)
         languages = discovery.detect_languages()
         dockerfiles = discovery.discover_dockerfiles()
         k8s = discovery.discover_k8s_manifests()
         iac = discovery.discover_iac_files()
         compose = discovery.discover_compose_files()
+        all_scannable_files = discovery.discover_scannable_files()
+        total_files_count = len(all_scannable_files)
 
         console.print(f"  Target is Git repo: [bold]{'Yes' if discovery.is_git_repo() else 'No'}[/bold]")
+        console.print(f"  Total Scannable Files: [bold]{total_files_count}[/bold]")
         console.print(f"  Detected Runtimes: [bold]{', '.join(languages.keys()) if languages else 'None'}[/bold]")
         console.print(f"  Dockerfiles found: [bold]{len(dockerfiles)}[/bold]")
         console.print(f"  Kubernetes manifests: [bold]{len(k8s)}[/bold]")
@@ -162,30 +167,110 @@ def run_scan(
             return 0
         results: List[ToolResult] = []
 
-        for scanner in scanners:
-            try:
-                res = scanner.scan(target_path)
-                results.append(res)
-            except Exception as e:
-                results.append(
-                    ToolResult(
+        total_scanners = len(scanners)
+        start_overall_time = time.time()
+        file_timings_map = {}
+        processed_files_set = set()
+
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]{task.description}"),
+            BarColumn(bar_width=None),
+            TextColumn("[bold yellow]{task.completed}/{task.total} engines"),
+            TextColumn("•"),
+            TextColumn("[green]{task.fields[file_progress]}"),
+            TextColumn("•"),
+            TimeElapsedColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=console,
+            transient=True
+        ) as progress:
+            scan_task = progress.add_task(
+                "Running security scan pipeline...",
+                total=total_scanners,
+                file_progress=f"0/{total_files_count} files"
+            )
+
+            for idx, scanner in enumerate(scanners, start=1):
+                progress.update(
+                    scan_task,
+                    description=f"Scanning with [{idx}/{total_scanners}] {scanner.name}..."
+                )
+                try:
+                    res = scanner.scan(target_path)
+                    results.append(res)
+                except Exception as e:
+                    res = ToolResult(
                         tool_name=scanner.name,
                         category=scanner.category,
                         status=StatusEnum.ERROR,
                         exit_code=1,
                         summary=f"Internal error: {str(e)}"
                     )
+                    results.append(res)
+
+                # Collect per-file timings and tracked file count
+                if res.file_timings:
+                    for fpath, dur in res.file_timings.items():
+                        processed_files_set.add(fpath)
+                        if fpath not in file_timings_map:
+                            file_timings_map[fpath] = {"total_time": dur, "scanners": [scanner.name]}
+                        else:
+                            file_timings_map[fpath]["total_time"] += dur
+                            if scanner.name not in file_timings_map[fpath]["scanners"]:
+                                file_timings_map[fpath]["scanners"].append(scanner.name)
+                elif res.status in (StatusEnum.PASS, StatusEnum.FAIL) and scanner.category in ("Fast SAST", "SAST", "Secret Detection", "SCA & Vulnerability", "SBOM Generation", "Code Quality & SAST"):
+                    # Whole-repo scanners analyze all scannable files; attribute file count and proportional time
+                    scanned_now = res.files_scanned if res.files_scanned > 0 else total_files_count
+                    per_file_dur = round(res.duration_seconds / max(scanned_now, 1), 4)
+                    for f in all_scannable_files:
+                        rel = str(f.relative_to(target_path)) if str(f).startswith(str(target_path)) else f.name
+                        processed_files_set.add(rel)
+                        if rel not in file_timings_map:
+                            file_timings_map[rel] = {"total_time": per_file_dur, "scanners": [scanner.name]}
+                        else:
+                            file_timings_map[rel]["total_time"] = round(file_timings_map[rel]["total_time"] + per_file_dur, 4)
+                            if scanner.name not in file_timings_map[rel]["scanners"]:
+                                file_timings_map[rel]["scanners"].append(scanner.name)
+
+                current_files_count = len(processed_files_set) if processed_files_set else (len(file_timings_map) if file_timings_map else 0)
+                if total_files_count > 0:
+                    current_files_count = min(current_files_count, total_files_count)
+                progress.update(
+                    scan_task,
+                    advance=1,
+                    file_progress=f"{current_files_count}/{total_files_count} files"
                 )
+
+        total_elapsed_overall = round(time.time() - start_overall_time, 2)
+
+        # Attribute scan duration to project files if not explicitly broken down
+        if not file_timings_map and all_scannable_files:
+            active_scanners_names = [r.tool_name for r in results if r.status in (StatusEnum.PASS, StatusEnum.FAIL)]
+            share = total_elapsed_overall / max(total_files_count, 1)
+            for f in all_scannable_files:
+                rel = str(f.relative_to(target_path)) if str(f).startswith(str(target_path)) else f.name
+                file_timings_map[rel] = {"total_time": round(share, 3), "scanners": active_scanners_names}
 
         # Reporting & Terminal Output
         reporter = Reporter(console)
         reporter.print_terminal_table(results)
         reporter.print_findings_drilldown(results)
         reporter.generate_markdown_summary(results, output_md)
-        reporter.export_json_report(results, output_json)
+
+        telemetry_payload = {
+            "total_files": total_files_count,
+            "total_elapsed_seconds": total_elapsed_overall,
+            "total_engines": total_scanners
+        }
+        reporter.export_json_report(results, output_json, telemetry=telemetry_payload)
 
         console.print(f"[dim]Exported Markdown summary to: {output_md.name}[/dim]")
-        console.print(f"[dim]Exported JSON report to:     {output_json.name}[/dim]\n")
+        console.print(f"[dim]Exported JSON report to:     {output_json.name}[/dim]")
+        console.print(f"[bold cyan]Total Scan Time:[/bold cyan] [bold white]{total_elapsed_overall}s[/bold white] across [bold white]{total_files_count}[/bold white] files\n")
 
         # Quality Gate evaluation
         total_crit = sum(r.findings.critical for r in results)
@@ -247,6 +332,10 @@ def main():
     scan_parser.add_argument("--md", default="devsec-summary.md", help="Path for Markdown executive summary")
     scan_parser.add_argument("--strict", action="store_true", help="Fail pipeline even on Medium severity issues")
     scan_parser.add_argument("--install-missing", action="store_true", help="Automatically download and install missing tools before scanning")
+    scan_parser.add_argument("--defectdojo-push", action="store_true", help="Push consolidated findings to active DefectDojo instance")
+    scan_parser.add_argument("--defectdojo-url", default=os.environ.get("DEFECTDOJO_URL", "http://localhost:8080"), help="DefectDojo base URL")
+    scan_parser.add_argument("--defectdojo-key", default=os.environ.get("DEFECTDOJO_KEY", ""), help="DefectDojo API v2 Key")
+    scan_parser.add_argument("--defectdojo-engagement", type=int, default=int(os.environ.get("DEFECTDOJO_ENGAGEMENT_ID", "1")), help="Target DefectDojo Engagement ID")
 
     # info command
     subparsers.add_parser("info", help="Show environment tool discovery status")
@@ -320,6 +409,25 @@ def main():
             tools=args.tools,
             exclude=args.exclude
         )
+
+        if args.defectdojo_push or os.environ.get("DEFECTDOJO_PUSH"):
+            from .ci import CICDIntegrator
+            dojo_key = args.defectdojo_key or os.environ.get("DEFECTDOJO_KEY", "")
+            if not dojo_key:
+                console.print("[yellow][WARN] DefectDojo push skipped: API key not provided (pass --defectdojo-key or export DEFECTDOJO_KEY)[/yellow]")
+            else:
+                console.print(f"Pushed to DefectDojo engagement #{args.defectdojo_engagement} at {args.defectdojo_url}...", end=" ")
+                pushed = CICDIntegrator.push_to_defectdojo(
+                    json_report_path=Path(args.json),
+                    dojo_url=args.defectdojo_url,
+                    api_key=dojo_key,
+                    engagement_id=args.defectdojo_engagement
+                )
+                if pushed:
+                    console.print("[bold green][OK][/bold green]")
+                else:
+                    console.print("[bold red][FAILED][/bold red]")
+
         sys.exit(code)
     else:
         parser.print_help()

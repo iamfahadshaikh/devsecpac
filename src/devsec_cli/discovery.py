@@ -78,6 +78,21 @@ class TargetDiscovery:
 
         return detected
 
+    def discover_scannable_files(self) -> List[Path]:
+        """Discovers all non-ignored, scannable source and configuration files in target directory."""
+        scannable = []
+        try:
+            for p in self.target_dir.rglob("*"):
+                if p.is_file() and not self._should_ignore(p):
+                    scannable.append(p)
+        except Exception:
+            pass
+        return sorted(scannable)
+
     def _should_ignore(self, path: Path) -> bool:
-        ignore_dirs = {".git", "node_modules", ".venv", "venv", "__pycache__", ".idea", ".vscode", "dist", "build"}
-        return any(part in ignore_dirs for part in path.parts)
+        ignore_dirs = {
+            ".git", "node_modules", ".venv", "venv", "__pycache__", 
+            ".idea", ".vscode", "dist", "build", ".tox", ".mypy_cache", 
+            ".pytest_cache", ".scannerwork", "target", ".egg-info"
+        }
+        return any(part in ignore_dirs or part.endswith(".egg-info") for part in path.parts)

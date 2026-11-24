@@ -51,6 +51,8 @@ class ToolResult:
     summary: str = ""
     findings: FindingCounts = field(default_factory=FindingCounts)
     duration_seconds: float = 0.0
+    files_scanned: int = 0
+    file_timings: Dict[str, float] = field(default_factory=dict)
     items: List[FindingDetail] = field(default_factory=list)
     details: Dict[str, Any] = field(default_factory=dict)
 

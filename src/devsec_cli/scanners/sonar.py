@@ -232,15 +232,6 @@ class SonarQubeScanner(BaseScanner):
             sonar_token = self._auto_generate_token(sonar_host)
             if sonar_token:
                 self._save_cached_token(sonar_token)
-                console.print(f"  * [bold green][OK][/bold green] SonarQube connected with freshly generated token: [dim]{sonar_token[:12]}...[/dim]")
-
-        if sonar_token:
-            console.print(f"  * SonarQube Auth: [bold green]Token authenticated[/bold green] ([dim]{sonar_token[:8]}...[/dim])")
-        else:
-            console.print("  * SonarQube Auth: [bold yellow]Anonymous (no token found)[/bold yellow]")
-
-        # If still no token, pass empty or let sonar-scanner try anonymous/default
-        console.print(f"  * SonarQube Target Host: [bold cyan]{sonar_host}[/bold cyan]")
 
         project_key = target_dir.name
 

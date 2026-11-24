@@ -107,25 +107,56 @@ class CICDIntegrator:
         lines.append("\n---\n*Report generated autonomously by [devsecpac v2](https://github.com/iamfahadshaikh)*")
         return "\n".join(lines)
 
-    @staticmethod
-    def push_to_defectdojo(json_report_path: Path, dojo_url: str, api_key: str, engagement_id: int) -> bool:
-        """Pushes consolidated JSON report into an active OWASP DefectDojo instance."""
+    @classmethod
+    def push_to_defectdojo(cls, json_report_path: Path, dojo_url: str, api_key: str, engagement_id: int) -> bool:
+        """Transforms unified devsec-report.json into DefectDojo Generic Findings format and pushes it."""
         if not json_report_path.exists():
             return False
 
         try:
+            results = cls.load_results_from_json(json_report_path)
+            deduped, _ = FindingCorrelator.deduplicate_findings(results)
+
+            dojo_findings = []
+            for item in deduped:
+                sev = item.severity.capitalize()  # Critical, High, Medium, Low, Info
+                if sev not in ("Critical", "High", "Medium", "Low", "Info"):
+                    sev = "Medium"
+                
+                finding_obj = {
+                    "title": f"[{item.tool}] {item.rule or item.description[:50]}",
+                    "severity": sev,
+                    "description": f"Tool: {item.tool}\nRule/CVE: {item.rule}\nFile: {item.file}:{item.line}\n\n{item.description}",
+                    "file_path": item.file,
+                    "active": True,
+                    "verified": True
+                }
+                if item.line and item.line.isdigit():
+                    finding_obj["line"] = int(item.line)
+                if item.rule and (item.rule.startswith("CVE-") or item.rule.startswith("GHSA-")):
+                    finding_obj["vulnerability_ids"] = [item.rule]
+
+                dojo_findings.append(finding_obj)
+
+            payload = {
+                "name": "DevSecPac Unified Scan",
+                "findings": dojo_findings
+            }
+
             url = f"{dojo_url.rstrip('/')}/api/v2/import-scan/"
             headers = {
                 "Authorization": f"Token {api_key}"
             }
             files = {
-                "file": (json_report_path.name, json_report_path.read_text(encoding="utf-8"), "application/json")
+                "file": ("devsec-dojo.json", json.dumps(payload), "application/json")
             }
             data = {
                 "scan_type": "Generic Findings Import",
-                "engagement": str(engagement_id)
+                "engagement": str(engagement_id),
+                "active": "true",
+                "verified": "true"
             }
-            resp = requests.post(url, headers=headers, files=files, data=data, timeout=30)
+            resp = requests.post(url, headers=headers, files=files, data=data, timeout=45)
             return resp.status_code in (200, 201)
         except Exception as e:
             console.print(f"[bold red][FAIL][/bold red] DefectDojo push error: {str(e)}")

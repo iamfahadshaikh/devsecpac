@@ -13,6 +13,38 @@ class Reporter:
     def __init__(self, console: Console = None):
         self.console = console or Console()
 
+    def print_file_telemetry_table(self, file_timings: dict, total_files: int, total_scan_seconds: float):
+        """Prints a detailed breakdown of timing and file scan metrics."""
+        if not file_timings:
+            return
+
+        table = Table(
+            title=f"File Scan Performance Telemetry ({len(file_timings)}/{total_files} tracked files, Total: {total_scan_seconds:.2f}s)",
+            show_lines=True,
+            header_style="bold green",
+            expand=False
+        )
+
+        table.add_column("Index", justify="right", style="dim", no_wrap=True)
+        table.add_column("Scanned File Path", style="bold white")
+        table.add_column("Scanner Engine(s)", style="cyan")
+        table.add_column("Scan Duration", justify="right", style="bold yellow", no_wrap=True)
+
+        # Sort files by duration descending to highlight bottlenecks
+        sorted_files = sorted(file_timings.items(), key=lambda kv: kv[1]["total_time"], reverse=True)
+        for idx, (fpath, meta) in enumerate(sorted_files, start=1):
+            scanners_str = ", ".join(meta.get("scanners", []))
+            dur_str = f"{meta['total_time']:.3f}s"
+            table.add_row(
+                str(idx),
+                fpath,
+                scanners_str,
+                dur_str
+            )
+
+        self.console.print(table)
+        self.console.print()
+
     def print_terminal_table(self, results: List[ToolResult]):
         """Prints a refined, non-wrapping terminal table of active scanner results.
         Filters out NOT_APPLICABLE tools with 0 findings to keep outputs clean."""
@@ -188,12 +220,13 @@ class Reporter:
             output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("\n".join(md), encoding="utf-8")
 
-    def export_json_report(self, results: List[ToolResult], output_path: Path):
-        """Consolidates status.json outputs into one JSON report."""
+    def export_json_report(self, results: List[ToolResult], output_path: Path, telemetry: dict = None):
+        """Consolidates status.json outputs into one JSON report with scan telemetry."""
         if output_path.parent:
             output_path.parent.mkdir(parents=True, exist_ok=True)
         report = {
             "total_tools": len(results),
+            "telemetry": telemetry or {},
             "summary": {
                 "critical": sum(r.findings.critical for r in results),
                 "high": sum(r.findings.high for r in results),

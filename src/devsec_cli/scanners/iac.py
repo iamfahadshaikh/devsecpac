@@ -165,5 +165,6 @@ class KubeconformScanner(BaseScanner):
             summary=summary,
             findings=findings,
             duration_seconds=elapsed,
+            files_scanned=len(k8s_files),
             items=items
         )
