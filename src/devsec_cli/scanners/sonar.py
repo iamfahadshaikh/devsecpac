@@ -229,16 +229,29 @@ class SonarQubeScanner(BaseScanner):
         if not self.is_tool_available():
             return self.create_skipped_result("sonar-scanner binary not found in PATH")
 
-        sonar_host = os.environ.get("SONAR_HOST_URL", "http://localhost:9000")
+        sonar_host = os.environ.get("SONAR_HOST_URL", "")
+        if not sonar_host:
+            # Check if default localhost:9000 is reachable, otherwise probe container bridge host.docker.internal:9000
+            if self._check_server_reachable("http://localhost:9000"):
+                sonar_host = "http://localhost:9000"
+            elif self._check_server_reachable("http://host.docker.internal:9000"):
+                sonar_host = "http://host.docker.internal:9000"
+            else:
+                sonar_host = "http://localhost:9000"
+
         sonar_token = self._resolve_token()
 
         # If not reachable and no token, autonomously spin up SonarQube via Docker
         if not self._check_server_reachable(sonar_host):
-            new_token = self._auto_start_sonarqube(sonar_host)
-            if new_token:
-                sonar_token = new_token
-            elif not self._check_server_reachable(sonar_host):
-                return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
+            # Check host.docker.internal in case running inside container
+            if sonar_host == "http://localhost:9000" and self._check_server_reachable("http://host.docker.internal:9000"):
+                sonar_host = "http://host.docker.internal:9000"
+            else:
+                new_token = self._auto_start_sonarqube(sonar_host)
+                if new_token:
+                    sonar_token = new_token
+                elif not self._check_server_reachable(sonar_host):
+                    return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
 
         # When new container was created, old conf properties has old token that fails
         # Verify token by testing /api/authentication/validate

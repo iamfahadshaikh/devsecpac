@@ -14,12 +14,15 @@ class Reporter:
         self.console = console or Console()
 
     def print_terminal_table(self, results: List[ToolResult]):
-        """Prints a refined, non-wrapping terminal table of active scanner results.
-        Filters out NOT_APPLICABLE tools with 0 findings to keep outputs clean."""
+        """Prints a refined, responsive terminal table of active scanner results.
+        Automatically adapts to terminal width to prevent header distortion or ugly truncation."""
         active_results = [
             r for r in results 
             if not (r.status == StatusEnum.NOT_APPLICABLE and r.findings.total == 0)
         ]
+
+        term_width = self.console.width or 120
+        is_compact = term_width < 105
 
         table = Table(
             title="DevSecOps Autonomous Pipeline Scan Results",
@@ -27,16 +30,6 @@ class Reporter:
             header_style="bold cyan",
             expand=True
         )
-
-        table.add_column("Scanner / Tool", style="bold white", min_width=16, no_wrap=True)
-        table.add_column("Category", style="magenta", min_width=14, no_wrap=True)
-        table.add_column("Status", justify="center", width=8, no_wrap=True)
-        table.add_column("Crit", justify="right", style="bold red", width=5, no_wrap=True)
-        table.add_column("High", justify="right", style="red", width=5, no_wrap=True)
-        table.add_column("Med", justify="right", style="yellow", width=5, no_wrap=True)
-        table.add_column("Low", justify="right", style="blue", width=5, no_wrap=True)
-        table.add_column("Time", justify="right", style="dim", width=8, no_wrap=True)
-        table.add_column("Summary", style="dim white", ratio=1)
 
         status_styles = {
             StatusEnum.PASS: "[bold green]PASS[/bold green]",
@@ -46,19 +39,54 @@ class Reporter:
             StatusEnum.ERROR: "[bold white on red]ERROR[/bold white on red]",
         }
 
-        for r in active_results:
-            styled_status = status_styles.get(r.status, r.status.value)
-            table.add_row(
-                r.tool_name,
-                r.category,
-                styled_status,
-                str(r.findings.critical),
-                str(r.findings.high),
-                str(r.findings.medium),
-                str(r.findings.low),
-                f"{r.duration_seconds}s",
-                r.summary
-            )
+        if is_compact:
+            # Compact mode for narrow terminals (e.g. 70-100 cols): combine findings into one column
+            table.add_column("Scanner", style="bold white", min_width=14, no_wrap=True)
+            table.add_column("Status", justify="center", width=8, no_wrap=True)
+            table.add_column("Findings (C/H/M/L)", justify="center", width=18, no_wrap=True)
+            table.add_column("Time", justify="right", style="dim", width=7, no_wrap=True)
+            table.add_column("Summary", style="dim white", ratio=1)
+
+            for r in active_results:
+                styled_status = status_styles.get(r.status, r.status.value)
+                crit_s = f"[bold red]{r.findings.critical}[/bold red]" if r.findings.critical else "0"
+                high_s = f"[red]{r.findings.high}[/red]" if r.findings.high else "0"
+                med_s = f"[yellow]{r.findings.medium}[/yellow]" if r.findings.medium else "0"
+                low_s = f"[blue]{r.findings.low}[/blue]" if r.findings.low else "0"
+                findings_str = f"{crit_s}/{high_s}/{med_s}/{low_s}"
+
+                table.add_row(
+                    r.tool_name,
+                    styled_status,
+                    findings_str,
+                    f"{r.duration_seconds}s",
+                    r.summary
+                )
+        else:
+            # Full layout for normal / wide terminals (>= 105 cols)
+            table.add_column("Scanner / Tool", style="bold white", min_width=16, no_wrap=True)
+            table.add_column("Category", style="magenta", min_width=14, no_wrap=True)
+            table.add_column("Status", justify="center", width=8, no_wrap=True)
+            table.add_column("Crit", justify="right", style="bold red", width=5, no_wrap=True)
+            table.add_column("High", justify="right", style="red", width=5, no_wrap=True)
+            table.add_column("Med", justify="right", style="yellow", width=5, no_wrap=True)
+            table.add_column("Low", justify="right", style="blue", width=5, no_wrap=True)
+            table.add_column("Time", justify="right", style="dim", width=8, no_wrap=True)
+            table.add_column("Summary", style="dim white", ratio=1)
+
+            for r in active_results:
+                styled_status = status_styles.get(r.status, r.status.value)
+                table.add_row(
+                    r.tool_name,
+                    r.category,
+                    styled_status,
+                    str(r.findings.critical),
+                    str(r.findings.high),
+                    str(r.findings.medium),
+                    str(r.findings.low),
+                    f"{r.duration_seconds}s",
+                    r.summary
+                )
 
         self.console.print()
         self.console.print(table)

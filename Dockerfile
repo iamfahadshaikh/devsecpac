@@ -45,6 +45,9 @@ RUN pip install --no-cache-dir --user .
 # Run autonomous setup to install all missing binary engines into user bin
 RUN /home/devsecuser/.local/bin/devsec setup || true
 
+# Pre-download core CodeQL language packs into container for immediate offline query readiness
+RUN /home/devsecuser/.local/bin/codeql pack download codeql/python-queries codeql/javascript-queries || true
+
 # Set workspace directory for scan targets
 WORKDIR /workspace
 
