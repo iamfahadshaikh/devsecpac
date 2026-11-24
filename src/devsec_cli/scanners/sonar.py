@@ -2,10 +2,13 @@
 
 from pathlib import Path
 import os
+import sys
+import platform
 import json
 import time
 import requests
 import base64
+from typing import Tuple, Optional
 from rich.prompt import Confirm
 from rich.console import Console
 from .base import BaseScanner
@@ -148,47 +151,63 @@ class SonarQubeScanner(BaseScanner):
         except Exception:
             return ""
 
-    def _is_docker_running(self) -> bool:
-        """Verifies if docker is installed AND the daemon is actively running."""
+    def _ensure_docker_available(self) -> Tuple[bool, str]:
+        """Checks if Docker is available. On Linux, attempts auto-install if missing. On Windows, prints installation guide."""
         docker_bin = ProcessRunner.find_binary("docker")
         if not docker_bin:
-            return False
-        try:
-            code, _, _, _ = ProcessRunner.run_command([docker_bin, "info"], timeout=3)
-            return code == 0
-        except Exception:
-            return False
+            if platform.system().lower() == "windows":
+                console.print("\n[bold yellow][!] Docker is required for autonomous SonarQube launch on Windows.[/bold yellow]")
+                console.print("    Please install Docker Desktop: [bold cyan]https://www.docker.com/products/docker-desktop/[/bold cyan]\n")
+                return False, ""
+            else:
+                # On Linux, autonomously install docker.io
+                console.print("\n[bold blue][..] Docker not detected. Attempting autonomous Docker installation via apt...[/bold blue]")
+                code, _, _, _ = ProcessRunner.run_command(["sudo", "apt-get", "update", "-y"])
+                code, _, _, _ = ProcessRunner.run_command(["sudo", "apt-get", "install", "-y", "--no-install-recommends", "docker.io"])
+                ProcessRunner.run_command(["sudo", "systemctl", "start", "docker"])
+                docker_bin = ProcessRunner.find_binary("docker")
+                if not docker_bin:
+                    return False, ""
 
-    def _prompt_start_sonarqube(self, sonar_host: str) -> str:
-        """Prompts user if they want to start a local SonarQube container automatically."""
-        import sys
-        if not sys.stdin.isatty():
+        # Check if docker daemon is running
+        code, _, _, _ = ProcessRunner.run_command([docker_bin, "info"], timeout=5)
+        if code != 0:
+            if platform.system().lower() == "windows":
+                console.print("\n[bold yellow][!] Docker Desktop is installed but the daemon is not running.[/bold yellow]")
+                console.print("    Please start Docker Desktop to enable SonarQube autonomous spin-up.\n")
+                return False, ""
+            else:
+                ProcessRunner.run_command(["sudo", "systemctl", "start", "docker"])
+                code, _, _, _ = ProcessRunner.run_command([docker_bin, "info"], timeout=5)
+                if code != 0:
+                    return False, ""
+
+        return True, docker_bin
+
+    def _auto_start_sonarqube(self, sonar_host: str) -> str:
+        """Autonomously launches or resumes SonarQube container via Docker without interactive prompts."""
+        has_docker, docker_bin = self._ensure_docker_available()
+        if not has_docker:
             return ""
 
-        if not self._is_docker_running():
-            return ""
+        console.print("\n[bold cyan][*] Autonomously bootstrapping local SonarQube server via Docker...[/bold cyan]")
 
-        docker_bin = ProcessRunner.find_binary("docker")
-
-        console.print("\n[bold yellow]SonarQube server is not reachable.[/bold yellow]")
-        if not Confirm.ask("Would you like devsec to launch a SonarQube container via Docker?"):
-            return ""
-
-        # Check if container named 'sonarqube' already exists
+        # Check if container named 'sonarqube' exists
         code, stdout, _, _ = ProcessRunner.run_command([docker_bin, "ps", "-a", "--filter", "name=sonarqube", "--format", "{{.Names}}"])
         if "sonarqube" in stdout:
-            console.print("  * Starting existing [bold cyan]sonarqube[/bold cyan] container...")
+            console.print("  * Resuming existing [bold green]sonarqube[/bold green] container...")
             ProcessRunner.run_command([docker_bin, "start", "sonarqube"])
         else:
-            console.print("  * Pulling and starting [bold cyan]sonarqube:lts-community[/bold cyan] on port 9000...")
+            console.print("  * Pulling & launching [bold green]sonarqube:lts-community[/bold green] on port 9000...")
             ProcessRunner.run_command([
                 docker_bin, "run", "-d", "--name", "sonarqube",
+                "--restart", "unless-stopped",
                 "-p", "9000:9000", "sonarqube:lts-community"
             ])
 
-        # Wait for SonarQube to be UP
-        with console.status("[bold blue]Waiting for SonarQube server to become ready (this may take up to 45s)...[/bold blue]"):
-            for _ in range(60):
+        # Wait for SonarQube to become ready
+        with console.status("[bold blue]Waiting for SonarQube server readiness (Compute Engine initializing)...[/bold blue]"):
+            for _ in range(45):
                 if self._check_server_reachable(sonar_host):
                     break
                 time.sleep(2)
@@ -197,7 +216,7 @@ class SonarQubeScanner(BaseScanner):
         token = self._auto_generate_token(sonar_host)
         if token:
             self._save_cached_token(token)
-            console.print(f"  * [bold green][OK][/bold green] Generated analysis token: [dim]{token[:12]}...[/dim]")
+            console.print(f"  * [bold green][OK][/bold green] Autonomous analysis token generated: [dim]{token[:12]}...[/dim]")
         return token
 
     def scan(self, target_dir: Path) -> ToolResult:
@@ -213,9 +232,13 @@ class SonarQubeScanner(BaseScanner):
         sonar_host = os.environ.get("SONAR_HOST_URL", "http://localhost:9000")
         sonar_token = self._resolve_token()
 
-        # If not reachable and no token, skip gracefully without blocking the pipeline
+        # If not reachable and no token, autonomously spin up SonarQube via Docker
         if not self._check_server_reachable(sonar_host):
-            return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
+            new_token = self._auto_start_sonarqube(sonar_host)
+            if new_token:
+                sonar_token = new_token
+            elif not self._check_server_reachable(sonar_host):
+                return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
 
         # When new container was created, old conf properties has old token that fails
         # Verify token by testing /api/authentication/validate
