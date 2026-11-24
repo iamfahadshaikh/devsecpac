@@ -120,18 +120,15 @@ class Reporter:
             f"[blue]{total_low} Low[/blue]{dedup_info}"
         )
 
+        term_width = self.console.width or 120
+        is_compact = term_width < 105
+
         table = Table(
             title=summary_title,
             show_lines=True,
             header_style="bold yellow",
-            expand=False
+            expand=True if is_compact else False
         )
-
-        table.add_column("Severity", justify="center", no_wrap=True)
-        table.add_column("Scanner", style="cyan", no_wrap=True)
-        table.add_column("Location (File:Line)", style="bold white")
-        table.add_column("Rule / CVE", style="bold magenta", no_wrap=True)
-        table.add_column("Description", style="dim white")
 
         sev_styles = {
             "CRITICAL": "[bold white on red] CRIT [/bold white on red]",
@@ -141,16 +138,40 @@ class Reporter:
             "INFO": "[dim] INFO [/dim]",
         }
 
-        # Show in priority order: CRITICAL -> HIGH -> MEDIUM -> LOW
-        for item in (crit_items + high_items + med_items + low_items):
-            loc = f"{item.file}:{item.line}" if item.line else item.file
-            table.add_row(
-                sev_styles.get(item.severity.upper(), item.severity),
-                item.tool,
-                loc,
-                item.rule or "-",
-                item.description
-            )
+        if is_compact:
+            # Compact view for narrow / default 80-col terminals (e.g. Docker non-TTY or CI runners)
+            table.add_column("Sev", justify="center", width=7, no_wrap=True)
+            table.add_column("Scanner", style="cyan", width=12, no_wrap=True)
+            table.add_column("Location & Rule", style="bold white", ratio=2)
+            table.add_column("Description", style="dim white", ratio=3)
+
+            for item in (crit_items + high_items + med_items + low_items):
+                loc = f"{item.file}:{item.line}" if item.line else item.file
+                loc_rule = f"{loc}\n[dim magenta]{item.rule or '-'}[/dim magenta]"
+                table.add_row(
+                    sev_styles.get(item.severity.upper(), item.severity),
+                    item.tool,
+                    loc_rule,
+                    item.description
+                )
+        else:
+            # Full view for normal / wide terminals
+            table.add_column("Severity", justify="center", no_wrap=True)
+            table.add_column("Scanner", style="cyan", no_wrap=True)
+            table.add_column("Location (File:Line)", style="bold white")
+            table.add_column("Rule / CVE", style="bold magenta", no_wrap=True)
+            table.add_column("Description", style="dim white")
+
+            # Show in priority order: CRITICAL -> HIGH -> MEDIUM -> LOW
+            for item in (crit_items + high_items + med_items + low_items):
+                loc = f"{item.file}:{item.line}" if item.line else item.file
+                table.add_row(
+                    sev_styles.get(item.severity.upper(), item.severity),
+                    item.tool,
+                    loc,
+                    item.rule or "-",
+                    item.description
+                )
 
         self.console.print(table)
         self.console.print()

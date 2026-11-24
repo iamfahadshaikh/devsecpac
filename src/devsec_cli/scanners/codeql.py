@@ -2,8 +2,10 @@
 
 from pathlib import Path
 import json
+import os
 import shutil
 import tempfile
+import time
 from .base import BaseScanner
 from ..contracts import ToolResult, StatusEnum, FindingCounts, FindingDetail
 from ..runner import ProcessRunner
@@ -45,8 +47,8 @@ class CodeQLScanner(BaseScanner):
         status = StatusEnum.PASS
         summary = f"CodeQL SAST analysis completed for {codeql_lang}"
 
-        sarif_out = target_dir / ".codeql_results.sarif"
-        db_dir = target_dir / ".codeql_db"
+        sarif_out = Path(tempfile.gettempdir()) / f".codeql_results_{os.getpid()}_{int(time.time())}.sarif"
+        db_dir = Path(tempfile.gettempdir()) / f".codeql_db_{os.getpid()}_{int(time.time())}"
 
         try:
             # 1. Create database
