@@ -198,6 +198,7 @@ def run_scan(
                     scan_task,
                     description=f"Scanning with [{idx}/{total_scanners}] {scanner.name}..."
                 )
+                progress.refresh()
                 try:
                     res = scanner.scan(target_path)
                     results.append(res)
