@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "devsecpac"
-version = "1.0.0"
+version = "2.0.0"
 description = "Universal Autonomous DevSecOps Scanner Orchestrator"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,7 +21,8 @@ keywords = [
     "sbom",
     "secrets-detection",
     "compliance",
-    "azure-devops"
+    "kubernetes",
+    "container-security"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
