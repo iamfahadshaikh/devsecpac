@@ -148,15 +148,27 @@ class SonarQubeScanner(BaseScanner):
         except Exception:
             return ""
 
+    def _is_docker_running(self) -> bool:
+        """Verifies if docker is installed AND the daemon is actively running."""
+        docker_bin = ProcessRunner.find_binary("docker")
+        if not docker_bin:
+            return False
+        try:
+            code, _, _, _ = ProcessRunner.run_command([docker_bin, "info"], timeout=3)
+            return code == 0
+        except Exception:
+            return False
+
     def _prompt_start_sonarqube(self, sonar_host: str) -> str:
         """Prompts user if they want to start a local SonarQube container automatically."""
         import sys
         if not sys.stdin.isatty():
             return ""
 
-        docker_bin = ProcessRunner.find_binary("docker")
-        if not docker_bin:
+        if not self._is_docker_running():
             return ""
+
+        docker_bin = ProcessRunner.find_binary("docker")
 
         console.print("\n[bold yellow]SonarQube server is not reachable.[/bold yellow]")
         if not Confirm.ask("Would you like devsec to launch a SonarQube container via Docker?"):
@@ -201,8 +213,13 @@ class SonarQubeScanner(BaseScanner):
         sonar_host = os.environ.get("SONAR_HOST_URL", "http://localhost:9000")
         sonar_token = self._resolve_token()
 
-        # If not reachable and no token, prompt user to start it or auto-connect
+        # If not reachable and no token, check if we can reach it or skip gracefully
         if not self._check_server_reachable(sonar_host):
+            # Never hang inside non-interactive or automated progress bars
+            # Only prompt if running in an interactive TTY and not on Windows without Docker daemon
+            if not self._is_docker_running():
+                return self.create_skipped_result("SonarQube server unreachable (export SONAR_HOST_URL & SONAR_TOKEN)")
+
             new_token = self._prompt_start_sonarqube(sonar_host)
             if new_token:
                 sonar_token = new_token

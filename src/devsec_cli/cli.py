@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+import platform
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -137,6 +138,12 @@ def run_scan(
         console.print("[bold blue]Checking and installing missing tools first...[/bold blue]")
         installer = ToolInstaller()
         installer.install_all()
+
+    # Windows notice: DevSecPac is engineered natively for Linux / Container environments
+    if platform.system().lower() == "windows":
+        console.print("[bold yellow][!] Windows Environment Detected:[/bold yellow]")
+        console.print("    [dim]DevSecPac was built for Linux, containers, and cloud CI/CD pipelines.[/dim]")
+        console.print("    [italic cyan]It will run on Windows, but to unlock its full speed and firepower, do yourself a favor and run it on Linux (or Docker).[/italic cyan]\n")
 
     console.print(f"\n[bold green]Initiating DevSecOps Scan on:[/bold green] [bold white]{target_path.resolve()}[/bold white]\n")
 
