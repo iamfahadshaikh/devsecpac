@@ -60,9 +60,17 @@ class ProcessRunner:
             )
             elapsed = round(time.time() - start, 2)
             return process.returncode, process.stdout, process.stderr, elapsed
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             elapsed = round(time.time() - start, 2)
+            # On Windows, child processes created by batch/cmd files don't terminate automatically on timeout
+            try:
+                if hasattr(exc, 'stdout') and exc.stdout:
+                    pass
+            except Exception:
+                pass
             return -1, "", f"Command timed out after {timeout} seconds", elapsed
+        except KeyboardInterrupt:
+            raise
         except Exception as e:
             elapsed = round(time.time() - start, 2)
             return -1, "", str(e), elapsed

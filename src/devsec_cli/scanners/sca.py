@@ -118,8 +118,13 @@ class DependencyCheckScanner(BaseScanner):
             # Without an NVD API key, NIST rate-limits download requests heavily
             # Pass noupdate if local database cache exists to avoid 10-minute freezes
             data_dir = Path.home() / ".local" / "opt" / "dependency-check" / "data"
-            if (data_dir / "odc.mv.db").exists():
+            win_data_dir = Path(os.environ.get("USERPROFILE", ".")) / ".local" / "opt" / "dependency-check" / "data"
+            if (data_dir / "odc.mv.db").exists() or (win_data_dir / "odc.mv.db").exists():
                 cmd.append("--noupdate")
+            elif not nvd_api_key:
+                # First run on host without NVD key will freeze for 15+ minutes due to NIST rate-limiting
+                # Skip gracefully if Aqua Trivy is already active (Trivy provides instant SCA without NVD rate-limits)
+                return self.create_skipped_result("Skipped slow NVD database initialization (Trivy active; export NVD_API_KEY to enable)")
 
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=120)
 
