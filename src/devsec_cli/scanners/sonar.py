@@ -241,17 +241,40 @@ class SonarQubeScanner(BaseScanner):
             f"-Dsonar.sources={target_dir}",
             f"-Dsonar.host.url={sonar_host}"
         ]
+
+        # Auto-configure sonar.java.binaries for Java / Android projects
+        if "java" in languages:
+            # Look for existing build directories (target/classes, build/classes, app/build)
+            possible_bins = []
+            for candidate in ("target/classes", "build/classes", "app/build/intermediates/javac", "bin"):
+                cand_path = target_dir / candidate
+                if cand_path.is_dir():
+                    possible_bins.append(str(cand_path))
+
+            if possible_bins:
+                cmd.append(f"-Dsonar.java.binaries={','.join(possible_bins)}")
+            else:
+                # If uncompiled, point to project root or empty placeholder so SonarQube still analyzes raw source AST
+                fallback_bin = target_dir / ".sonar_binaries"
+                fallback_bin.mkdir(exist_ok=True)
+                cmd.append(f"-Dsonar.java.binaries={fallback_bin}")
+
         # SonarQube token supports both -Dsonar.token and -Dsonar.login
         if sonar_token:
             cmd.extend([f"-Dsonar.token={sonar_token}", f"-Dsonar.login={sonar_token}"])
 
         code, stdout, stderr, elapsed = ProcessRunner.run_command(cmd, cwd=str(target_dir), timeout=600)
 
+        # Cleanup fallback binaries directory if created
+        fallback_bin = target_dir / ".sonar_binaries"
+        if fallback_bin.exists():
+            try:
+                fallback_bin.rmdir()
+            except Exception:
+                pass
+
         if code != 0:
-            err_reason = "SonarQube analysis failed"
-            if "sonar.java.binaries" in (stdout + stderr):
-                err_reason = "Java bytecode binaries required for SonarQube"
-            return self.create_skipped_result(err_reason)
+            return self.create_skipped_result("SonarQube analysis failed")
 
         # Query REST API for detailed findings
         findings, items = self._fetch_sonar_issues(sonar_host, sonar_token, project_key)
