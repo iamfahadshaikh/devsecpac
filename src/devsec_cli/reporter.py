@@ -25,18 +25,18 @@ class Reporter:
             title="DevSecOps Autonomous Pipeline Scan Results",
             show_lines=True,
             header_style="bold cyan",
-            expand=False
+            expand=True
         )
 
-        table.add_column("Scanner / Tool", style="bold white", no_wrap=True)
-        table.add_column("Category", style="magenta", no_wrap=True)
-        table.add_column("Status", justify="center", no_wrap=True)
-        table.add_column("Crit", justify="right", style="bold red", no_wrap=True)
-        table.add_column("High", justify="right", style="red", no_wrap=True)
-        table.add_column("Med", justify="right", style="yellow", no_wrap=True)
-        table.add_column("Low", justify="right", style="blue", no_wrap=True)
-        table.add_column("Time", justify="right", style="dim", no_wrap=True)
-        table.add_column("Summary", style="dim white")
+        table.add_column("Scanner / Tool", style="bold white", min_width=16, no_wrap=True)
+        table.add_column("Category", style="magenta", min_width=14, no_wrap=True)
+        table.add_column("Status", justify="center", width=8, no_wrap=True)
+        table.add_column("Crit", justify="right", style="bold red", width=5, no_wrap=True)
+        table.add_column("High", justify="right", style="red", width=5, no_wrap=True)
+        table.add_column("Med", justify="right", style="yellow", width=5, no_wrap=True)
+        table.add_column("Low", justify="right", style="blue", width=5, no_wrap=True)
+        table.add_column("Time", justify="right", style="dim", width=8, no_wrap=True)
+        table.add_column("Summary", style="dim white", ratio=1)
 
         status_styles = {
             StatusEnum.PASS: "[bold green]PASS[/bold green]",
