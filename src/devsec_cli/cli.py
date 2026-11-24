@@ -232,6 +232,13 @@ def run_scan(
 
         total_elapsed_overall = round(time.time() - start_overall_time, 2)
 
+        # Apply specific finding bypasses from .devsecignore if present
+        from .bypass import FindingBypassManager
+        bypass_mgr = FindingBypassManager(target_path)
+        results, bypassed_total = bypass_mgr.filter_tool_results(results)
+        if bypassed_total > 0:
+            console.print(f"[dim cyan][INFO] Suppressed {bypassed_total} finding(s) matching .devsecignore rules.[/dim cyan]")
+
         # Reporting & Terminal Output
         reporter = Reporter(console)
         reporter.print_terminal_table(results)
@@ -268,6 +275,22 @@ def run_scan(
             console.print("       [cyan]export SONAR_HOST_URL=\"http://localhost:9000\"[/cyan]")
             console.print("       [cyan]export SONAR_TOKEN=\"squ_your_token_here\"[/cyan]")
             console.print("  [dim]Note: GitHub CodeQL is already active and performing deep-AST SAST analysis.[/dim]\n")
+
+        total_all_issues = total_crit + total_high + total_med + total_low
+
+        if total_all_issues > 0:
+            console.print("[bold cyan]Automated Remediation & Fix Suggestions:[/bold cyan]")
+            console.print("  Generate a recommended remediation patch to test locally before committing:")
+            console.print("    [bold white]devsec fix . --patch-output devsec-fix.patch[/bold white]")
+            console.print("  Inspect and test the patch locally (e.g. [dim]git apply --check devsec-fix.patch[/dim]).")
+            console.print("  Once verified in your local environment, commit and push the updates.")
+            console.print()
+            console.print("[bold yellow]False Positive or Accepted Risk Bypass:[/bold yellow]")
+            console.print("  To permanently suppress a specific finding without altering your global quality gate,")
+            console.print("  add the exact file and rule/CVE to [bold white].devsecignore[/bold white]:")
+            console.print("    [dim]echo \"Dockerfile:DL3008\" >> .devsecignore[/dim]    # Suppress rule on specific file")
+            console.print("    [dim]echo \"CVE-2024-XXXX\" >> .devsecignore[/dim]       # Suppress specific vulnerability")
+            console.print()
 
         if (total_crit + total_high) > 0 or (strict and total_med > 0):
             console.print(
