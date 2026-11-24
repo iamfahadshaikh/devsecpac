@@ -169,7 +169,6 @@ def run_scan(
 
         total_scanners = len(scanners)
         start_overall_time = time.time()
-        file_timings_map = {}
         processed_files_set = set()
 
         from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
@@ -212,31 +211,16 @@ def run_scan(
                     )
                     results.append(res)
 
-                # Collect per-file timings and tracked file count
+                # Collect per-file count progress
                 if res.file_timings:
-                    for fpath, dur in res.file_timings.items():
+                    for fpath in res.file_timings:
                         processed_files_set.add(fpath)
-                        if fpath not in file_timings_map:
-                            file_timings_map[fpath] = {"total_time": dur, "scanners": [scanner.name]}
-                        else:
-                            file_timings_map[fpath]["total_time"] += dur
-                            if scanner.name not in file_timings_map[fpath]["scanners"]:
-                                file_timings_map[fpath]["scanners"].append(scanner.name)
                 elif res.status in (StatusEnum.PASS, StatusEnum.FAIL) and scanner.category in ("Fast SAST", "SAST", "Secret Detection", "SCA & Vulnerability", "SBOM Generation", "Code Quality & SAST"):
-                    # Whole-repo scanners analyze all scannable files; attribute file count and proportional time
-                    scanned_now = res.files_scanned if res.files_scanned > 0 else total_files_count
-                    per_file_dur = round(res.duration_seconds / max(scanned_now, 1), 4)
                     for f in all_scannable_files:
                         rel = str(f.relative_to(target_path)) if str(f).startswith(str(target_path)) else f.name
                         processed_files_set.add(rel)
-                        if rel not in file_timings_map:
-                            file_timings_map[rel] = {"total_time": per_file_dur, "scanners": [scanner.name]}
-                        else:
-                            file_timings_map[rel]["total_time"] = round(file_timings_map[rel]["total_time"] + per_file_dur, 4)
-                            if scanner.name not in file_timings_map[rel]["scanners"]:
-                                file_timings_map[rel]["scanners"].append(scanner.name)
 
-                current_files_count = len(processed_files_set) if processed_files_set else (len(file_timings_map) if file_timings_map else 0)
+                current_files_count = len(processed_files_set)
                 if total_files_count > 0:
                     current_files_count = min(current_files_count, total_files_count)
                 progress.update(
@@ -246,14 +230,6 @@ def run_scan(
                 )
 
         total_elapsed_overall = round(time.time() - start_overall_time, 2)
-
-        # Attribute scan duration to project files if not explicitly broken down
-        if not file_timings_map and all_scannable_files:
-            active_scanners_names = [r.tool_name for r in results if r.status in (StatusEnum.PASS, StatusEnum.FAIL)]
-            share = total_elapsed_overall / max(total_files_count, 1)
-            for f in all_scannable_files:
-                rel = str(f.relative_to(target_path)) if str(f).startswith(str(target_path)) else f.name
-                file_timings_map[rel] = {"total_time": round(share, 3), "scanners": active_scanners_names}
 
         # Reporting & Terminal Output
         reporter = Reporter(console)

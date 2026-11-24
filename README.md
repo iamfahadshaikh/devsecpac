@@ -1,10 +1,10 @@
-# devsecpac: Universal Autonomous DevSecOps Scanner
+# devsecpac: Universal Autonomous DevSecOps Scanner Orchestrator
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![Platform: Windows | Linux | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-green.svg)](#)
 
-A cross-platform Python CLI package that scans any codebase, container, and infrastructure configuration across 14 security dimensions with a single command:
+A cross-platform DevSecOps orchestrator that runs static, container, IaC, supply chain, and API security checks across your repository with a single command:
 
 ```bash
 devsecpac scan .
@@ -14,29 +14,27 @@ devsec scan .
 
 ---
 
-## Features
+## Key Features
 
-- **One-Command Full Spectrum Scan:** Scans secrets, Dockerfiles, IaC, Kubernetes manifests, package dependencies (SCA), and generates SBOMs.
-- **Graceful Tool Degradation:** Missing tools or non-applicable technologies (e.g. no Dockerfiles) are automatically marked as `SKIPPED` or `NOT_APPLICABLE` without breaking your build or pipeline.
-- **Embedded Kubernetes Security Inspector:** Native Python inspection for Pod Security Standards (detects root user, privileged mode, `hostPath` mounts, and resource limit omissions) without external binary dependencies.
-- **Standardized Contract (`status.json`):** Emits unified JSON and executive Markdown summaries ready for terminal view, GitHub summary tabs, or Azure DevOps Pipeline Summary.
-- **Cross-Platform:** Runs natively on **Windows**, **Linux**, and **macOS**, seamlessly locating system binaries with `.exe` / PATH resolution.
+- **Full-Spectrum Autonomous Pipeline:** Orchestrates 16 industry-standard security engines (SAST, DAST, SCA, Secrets, Containers, Kubernetes, IaC, Supply Chain, and API security).
+- **Graceful Tool Degradation:** Missing tools or non-applicable stacks (e.g., no Dockerfiles or no Kubernetes manifests) are gracefully marked as `SKIPPED` or `NOT_APPLICABLE` without crashing the pipeline.
+- **Embedded Kubernetes Security Inspector:** Built-in Python inspection for Pod Security Standards (detects root user, privileged mode, `hostPath` mounts, and resource limit omissions) without external binary dependencies.
+- **Cross-Scanner Deduplication:** Finds duplicate alerts across multiple engines (e.g., Trivy vs. Dependency-Check vs. Semgrep) and collapses them to eliminate alert fatigue.
+- **Automated Remediation Engine (`devsec fix`):** Generates and applies automated fixes for detected issues (e.g., unpinned package versions, missing user directives).
+- **Interactive PR Commenting (`devsec pr-comment`):** Formats unified scan findings into rich, collapsible GitHub/GitLab PR comments with dynamic quality gate badges.
+- **ASPM Integration (OWASP DefectDojo):** Pushes consolidated scan results directly to an active DefectDojo instance for enterprise vulnerability lifecycle tracking.
+- **Real-Time Telemetry & Progress:** Live progress indicators showing engine execution, scannable file count, elapsed runtime, and remaining ETA.
 
 ---
 
 ## Installation
 
-### Option 1: Install Locally in Editable Mode
+### Option 1: Editable Mode (Development)
 ```bash
 pip install -e .
 ```
 
-### Option 2: Install Direct from Git Repository
-```bash
-pip install git+https://github.com/<your-username>/devsec-cli.git
-```
-
-### Option 3: Build & Install Wheel
+### Option 2: Build & Install Wheel
 ```bash
 python -m pip install --upgrade build
 python -m build
@@ -45,56 +43,134 @@ pip install dist/*.whl
 
 ---
 
-## Quick Usage
+## Command Reference
 
-### 1. Check Tool Availability on Your System
+### 1. Host Binary Discovery
+Check installed security engines and discover missing tools:
 ```bash
 devsec info
 ```
-Outputs which scanners are installed on your PATH and ready to run.
 
-### 2. Scan the Current Directory
+### 2. Auto-Install Missing Tools
+Automatically download and configure missing binaries into your user environment:
 ```bash
-devsecpac scan .
+devsec setup
 ```
 
-### 3. Scan Any Remote Git Repository (GitHub, GitLab, Azure DevOps, Bitbucket)
+### 3. Scanning Targets
+
+#### Local Repository
 ```bash
-# Public repository via HTTPS (Full Git history across all branches)
-devsecpac scan -r https://github.com/octocat/Hello-World.git
+# Full scan of current directory
+devsec scan .
 
-# Enterprise / Private repo via SSH
-devsecpac scan -r git@gitlab.com:org/payment-service.git
+# Run specific scanners
+devsec scan . -t semgrep,hadolint,trivy
 
-# Azure DevOps / Private repo with PAT (zero process-table leakage)
-devsecpac scan -r https://dev.azure.com/org/proj/_git/repo --token $AZURE_PAT --branch main
+# Exclude slow scanners
+devsec scan . --exclude codeql,sonar
+
+# Fail pipeline on Medium severity (strict mode)
+devsec scan . --strict
 ```
 
-### 4. Scan with Custom Report Outputs
+#### Remote Git Repositories
+Scans remote repositories with full commit history across all branches:
 ```bash
-devsecpac scan /path/to/repo --json my-report.json --md executive-summary.md
+# Public repository
+devsec scan -r https://github.com/octocat/Hello-World.git
+
+# Private repository with authentication token
+devsec scan -r https://github.com/org/repo.git --token $GITHUB_TOKEN --branch main
 ```
 
-### 5. Strict Quality Gate (Fail on Medium issues too)
+#### ASPM / DefectDojo Export
+Push findings to an active OWASP DefectDojo instance:
 ```bash
-devsecpac scan -r https://github.com/org/repo.git --strict
+devsec scan . --defectdojo-push \
+  --defectdojo-url http://localhost:8080 \
+  --defectdojo-key <YOUR_API_KEY> \
+  --defectdojo-engagement 1
+```
+
+### 4. Automated Remediation (`devsec fix`)
+Generate remediation patches or apply fixes automatically:
+```bash
+# Preview remediation patches
+devsec fix --json devsec-report.json --patch-output fixes.patch
+
+# Apply fixes directly to codebase
+devsec fix --json devsec-report.json --apply
+```
+
+### 5. Pull Request Commenting (`devsec pr-comment`)
+Generate an interactive Markdown comment for GitHub Actions or GitLab CI:
+```bash
+devsec pr-comment --json devsec-report.json --output reports/github-pr-comment.md
 ```
 
 ---
 
-## Supported Scanners & Capabilities
+## Supported Security Engines
 
-| Security Dimension | Scanner / Engine | Missing Tool Behavior |
+| Security Dimension | Engine / Tool | Capability |
 | :--- | :--- | :--- |
-| **Secret Detection** | Gitleaks + TruffleHog | `SKIPPED` if not installed |
-| **Container Linting** | Hadolint | `NOT_APPLICABLE` if no Dockerfiles |
-| **IaC & Manifests** | Checkov | `NOT_APPLICABLE` if no IaC files |
-| **K8s Schema** | Kubeconform | `NOT_APPLICABLE` if no K8s manifests |
-| **SCA & Filesystem** | Aqua Trivy + OWASP Dependency-Check | `SKIPPED` if not installed |
-| **SBOM Generation** | Syft (CycloneDX & SPDX) | `SKIPPED` if not installed |
-| **K8s Hardening Audit**| **Native Embedded Python Engine** | Always runs (zero dependencies) |
+| **Secret Detection** | Gitleaks, TruffleHog | Hardcoded credentials, private keys, API tokens |
+| **Fast SAST** | Semgrep | High-speed AST rules and security guardrails |
+| **Deep SAST** | GitHub CodeQL | Semantic data-flow and taint tracking |
+| **Code Quality & SAST**| SonarQube | Maintainability, security hotspots, code smells |
+| **Container Security** | Hadolint | Dockerfile best practices and security linting |
+| **IaC Security** | Checkov | Terraform, Bicep, ARM, and CloudFormation auditing |
+| **Kubernetes Schema** | Kubeconform | Kubernetes API schema validation |
+| **Policy-as-Code** | Kyverno CLI | Kubernetes policy validation |
+| **K8s Hardening Audit**| Native Python Engine | Embedded Pod Security Standards inspector |
+| **SCA / CVE Scanning** | Aqua Trivy, OWASP Dependency-Check | Open-source dependency vulnerability analysis |
+| **SBOM Generation** | Syft | CycloneDX & SPDX software bill of materials |
+| **Supply Chain Security**| Cosign (Sigstore) | Cryptographic signature and attestation verification |
+| **DAST & Service Probe**| OWASP ZAP, Nmap | Headless baseline scan & active port scanning |
+| **API Contract Security**| Schemathesis | Property-based OpenAPI / Swagger contract fuzzer |
+| **Mobile Security** | MobSF | Mobile application static analysis |
+
+---
+
+## CI/CD Pipeline Integration (GitHub Actions Example)
+
+```yaml
+name: DevSecOps Autonomous Pipeline
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install DevSecPac
+        run: pip install -e .
+
+      - name: Run Security Scan
+        run: devsec scan . --json devsec-report.json --md devsec-summary.md
+
+      - name: Generate PR Comment
+        if: always()
+        run: devsec pr-comment --json devsec-report.json --output pr-comment.md
+
+      - name: Post Comment to PR
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: pr-comment.md
+```
 
 ---
 
 ## License
-MIT © Fahad Shaikh
+MIT (c) Fahad Shaikh
