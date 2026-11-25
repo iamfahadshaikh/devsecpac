@@ -24,6 +24,17 @@ class TargetDiscovery:
         "ruby": {"gemfile", "gemfile.lock"}
     }
 
+    LANG_EXTENSIONS = {
+        "nodejs": {".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx"},
+        "python": {".py"},
+        "java": {".java"},
+        "golang": {".go"},
+        "rust": {".rs"},
+        "dotnet": {".cs", ".fs"},
+        "php": {".php"},
+        "ruby": {".rb"}
+    }
+
     def __init__(self, target_dir: Path):
         self.target_dir = target_dir.resolve()
         self._cached = False
@@ -84,12 +95,17 @@ class TargetDiscovery:
                     except Exception:
                         pass
 
-                # Language runtime detection
+                # Language runtime detection by project manifest
                 for lang, patterns in self.LANG_PATTERNS.items():
                     if lang == "dotnet":
                         if any(f_lower.endswith(ext) for ext in patterns):
                             lang_matches[lang].add(f)
                     elif f_lower in patterns:
+                        lang_matches[lang].add(f)
+
+                # Fallback language runtime detection by source file extensions
+                for lang, exts in self.LANG_EXTENSIONS.items():
+                    if any(f_lower.endswith(ext) for ext in exts):
                         lang_matches[lang].add(f)
 
         self._scannable_files = sorted(scannable)

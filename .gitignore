@@ -43,6 +43,8 @@ htmlcov/
 # Output reports
 devsec-report.json
 devsec-summary.md
+devsec-pr-comment.md
+devsec-fix.patch
 *.status.json
 
 # IDEs & OS

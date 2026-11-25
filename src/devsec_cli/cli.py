@@ -286,11 +286,10 @@ def run_scan(
         total_all_issues = total_crit + total_high + total_med + total_low
 
         if total_all_issues > 0:
-            console.print("[bold cyan]Automated Remediation & Fix Suggestions:[/bold cyan]")
-            console.print("  Generate a recommended remediation patch to test locally before committing:")
+            console.print("[bold cyan]Advisory Remediation & Recommended Fixes:[/bold cyan]")
+            console.print("  Generate a recommended remediation patch preview to inspect:")
             console.print("    [bold white]devsec fix . --patch-output devsec-fix.patch[/bold white]")
-            console.print("  Inspect and test the patch locally (e.g. [dim]git apply --check devsec-fix.patch[/dim]).")
-            console.print("  Once verified in your local environment, commit and push the updates.")
+            console.print("  [dim]Note: Patches are advisory suggestions. Always inspect diffs before applying.[/dim]")
             console.print()
             console.print("[bold yellow]False Positive or Accepted Risk Bypass:[/bold yellow]")
             console.print("  To permanently suppress a specific finding without altering your global quality gate,")
@@ -351,9 +350,9 @@ def main():
     scan_parser.add_argument("--defectdojo-engagement", type=int, default=int(os.environ.get("DEFECTDOJO_ENGAGEMENT_ID", "1")), help="Target DefectDojo Engagement ID")
 
     # 4. fix command
-    fix_parser = subparsers.add_parser("fix", help="Generate recommended remediation patch for detected issues")
-    fix_parser.add_argument("target", nargs="?", default=".", help="Local target path to fix (default: .)")
-    fix_parser.add_argument("--patch-output", default="devsec-fix.patch", help="Path for output unified git patch file")
+    fix_parser = subparsers.add_parser("fix", help="Generate advisory remediation patch preview for detected issues")
+    fix_parser.add_argument("target", nargs="?", default=".", help="Local target path to inspect (default: .)")
+    fix_parser.add_argument("--patch-output", default="devsec-fix.patch", help="Path for advisory patch preview file")
 
     # 5. pr-comment command
     pr_parser = subparsers.add_parser("pr-comment", help="Generate or post interactive GitHub PR comment from scan results")
