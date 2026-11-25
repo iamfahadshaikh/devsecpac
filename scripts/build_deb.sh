@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PACKAGE_NAME="devsecpac"
-VERSION="3.0.0"
+VERSION="3.0.1"
 ARCHITECTURE="all"
 # Build in Linux /tmp filesystem to satisfy dpkg-deb permission requirements (NTFS mounts default to 777)
 BUILD_ROOT="/tmp/devsecpac_deb_build"
@@ -21,7 +21,7 @@ mkdir -p "dist"
 echo "[*] Creating DEBIAN control metadata..."
 cat << 'EOF' > "${DEB_DIR}/DEBIAN/control"
 Package: devsecpac
-Version: 3.0.0
+Version: 3.0.1
 Section: utils
 Priority: optional
 Architecture: all
