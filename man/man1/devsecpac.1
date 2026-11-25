@@ -1,0 +1,88 @@
+.TH DEVSECPAC 1 "November 2026" "v3.0.0" "DevSecOps Manual"
+.SH NAME
+devsecpac \- Universal Autonomous DevSecOps Scanner Orchestrator and ASPM Ingestor
+.SH SYNOPSIS
+.B devsecpac
+[\fB-h\fR] {\fBinfo\fR,\fBsetup\fR,\fBscan\fR,\fBfix\fR,\fBpr-comment\fR} ...
+.br
+.B devsec
+[\fB-h\fR] {\fBinfo\fR,\fBsetup\fR,\fBscan\fR,\fBfix\fR,\fBpr-comment\fR} ...
+.SH DESCRIPTION
+\fBdevsecpac\fR is an autonomous multi-engine DevSecOps orchestrator designed to inspect source code, container images, infrastructure-as-code manifests, and exposed APIs. It unifies and deduplicates findings from 16 specialized security tools and automatically pushes vulnerability reports to enterprise Application Security Posture Management (ASPM) systems such as OWASP DefectDojo.
+.SH COMMANDS
+.TP
+.B info
+Inspect and display detection status for all 16 integrated security engines on the local host.
+.TP
+.B setup
+Automatically download and configure missing scanner binaries directly into the user binary path (\fI~/.local/bin\fR).
+.TP
+.B scan \fR[\fItarget\fR] [\fIOPTIONS\fR]
+Execute autonomous multi-stage security scans on a local workspace or remote Git repository.
+.TP
+.B fix \fR[\fItarget\fR] [\fI--patch-output FILE\fR]
+Generate advisory local Git remediation patch previews for identified code flaws.
+.TP
+.B pr-comment \fR[\fI--json FILE\fR] [\fI--output FILE\fR]
+Format scan findings into GitHub Pull Request Markdown comments for automated CI/CD bot posting.
+.SH SCAN OPTIONS
+.TP
+.BI \-r,\ \-\-repo\  URL
+Clone and scan remote Git repository directly over HTTPS or SSH.
+.TP
+.BI \-t,\ \-\-tools\  TOOLS
+Run only selected security engines (comma-separated, e.g. \fIgitleaks,semgrep,trivy\fR).
+.TP
+.BI \-x,\ \-\-exclude\  TOOLS
+Exclude specific security engines from the scan run.
+.TP
+.B \-\-strict
+Enforce zero-tolerance quality gate: fails if any Medium, High, or Critical vulnerability is detected.
+.TP
+.B \-\-defectdojo\-push
+Automatically push and deduplicate all discovered findings directly into an active DefectDojo instance.
+.TP
+.BI \-\-defectdojo\-url\  URL
+DefectDojo base URL (default: \fIhttp://localhost:8080\fR or \fB$DEFECTDOJO_URL\fR).
+.TP
+.BI \-\-defectdojo\-key\  KEY
+DefectDojo REST API v2 Token (or \fB$DEFECTDOJO_KEY\fR).
+.TP
+.BI \-\-defectdojo\-engagement\  ID
+Target DefectDojo Engagement ID number (default: \fI1\fR or \fB$DEFECTDOJO_ENGAGEMENT_ID\fR).
+.SH INTEGRATED ENGINES
+.TP
+.B SAST
+Semgrep, GitHub CodeQL, SonarQube, MobSF
+.TP
+.B SCA & Dependencies
+Aqua Trivy, OWASP Dependency-Check
+.TP
+.B Secret Leak Detection
+Gitleaks, TruffleHog
+.TP
+.B Containers & IaC
+Hadolint, Checkov, Kubeconform, Kyverno, Native K8s Inspector
+.TP
+.B SBOM & Supply Chain
+Syft (CycloneDX), Cosign (Sigstore)
+.TP
+.B Dynamic & API Testing
+OWASP ZAP Baseline, Schemathesis, Nmap
+.SH EXAMPLES
+.PP
+Scan current directory and export results to DefectDojo:
+.RS
+.nf
+devsecpac scan . --defectdojo-push --defectdojo-key d4d2145336c22055206ca5f9ea7033e687c20dcb
+.fi
+.RE
+.PP
+Scan remote Git repository with secret and static scanners:
+.RS
+.nf
+devsecpac scan -r https://github.com/iamfahadshaikh/theWatcher.git -t gitleaks,semgrep
+.fi
+.RE
+.SH AUTHOR
+Fahad Shaikh (iamfahadshaikh)

@@ -319,9 +319,41 @@ def run_scan(
 
 
 def main():
+    help_epilog = """
+[bold cyan]QUICK USAGE EXAMPLES:[/bold cyan]
+  [green]Autonomous Local Scan:[/green]
+    devsecpac scan .
+
+  [green]Scan Remote GitHub Repo:[/green]
+    devsecpac scan -r https://github.com/owner/repo.git
+
+  [green]Select Specific Security Engines:[/green]
+    devsecpac scan . -t gitleaks,semgrep,trivy
+
+  [green]Export & Push Directly to DefectDojo ASPM:[/green]
+    devsecpac scan . --defectdojo-push --defectdojo-url http://localhost:8080 --defectdojo-key <TOKEN> --defectdojo-engagement 1
+
+  [green]Environment & Auto-Configuration:[/green]
+    devsecpac info          Show detected status of all 16 security engines
+    devsecpac setup         Automatically install missing binary security tools
+    devsecpac fix .         Generate local advisory remediation patch preview
+    devsecpac pr-comment    Generate GitHub PR Markdown audit comment
+
+[bold cyan]SUPPORTED ENGINES (16 Multi-Stage Tools):[/bold cyan]
+  * SAST:      Semgrep, GitHub CodeQL, SonarQube, MobSF
+  * SCA:       Aqua Trivy, OWASP Dependency-Check
+  * Secrets:   Gitleaks, TruffleHog
+  * Container: Hadolint
+  * IaC / K8s: Checkov, Kubeconform, Kyverno, K8s Python Inspector
+  * SBOM/Sign: Syft (CycloneDX), Cosign (Sigstore)
+  * DAST/API:  OWASP ZAP Baseline, Schemathesis, Nmap
+"""
+
     parser = argparse.ArgumentParser(
         prog="devsecpac",
-        description="devsecpac: Universal Autonomous DevSecOps Scanner Orchestrator"
+        description="devsecpac: Universal Autonomous DevSecOps Scanner Orchestrator with Enterprise ASPM (DefectDojo) & PR Integration",
+        epilog=help_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 

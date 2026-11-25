@@ -110,6 +110,20 @@ echo "Dockerfile:DL3008" >> .devsecignore
 echo "CVE-2024-XXXX" >> .devsecignore
 ```
 
+#### 9. Native Debian Package & System Manual Pages
+Build and install `devsecpac` natively on Debian/Ubuntu/Kali with system man-page integration:
+```bash
+# Build Debian package
+./scripts/build_deb.sh
+
+# Install system-wide
+sudo dpkg -i dist/devsecpac_3.0.0_all.deb
+
+# View manual page
+man devsecpac
+man devsec
+```
+
 ---
 
 ### Section 2: Running via Docker Image
