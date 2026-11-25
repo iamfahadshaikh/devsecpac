@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PACKAGE_NAME="devsecpac"
-VERSION="3.0.1"
+VERSION="3.0.2"
 ARCHITECTURE="all"
 # Build in Linux /tmp filesystem to satisfy dpkg-deb permission requirements (NTFS mounts default to 777)
 BUILD_ROOT="/tmp/devsecpac_deb_build"

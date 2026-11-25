@@ -320,26 +320,26 @@ def run_scan(
 
 def main():
     help_epilog = """
-[bold cyan]QUICK USAGE EXAMPLES:[/bold cyan]
-  [green]Autonomous Local Scan:[/green]
+\033[1;36mQUICK USAGE EXAMPLES:\033[0m
+  \033[1;32mAutonomous Local Scan:\033[0m
     devsecpac scan .
 
-  [green]Scan Remote GitHub Repo:[/green]
+  \033[1;32mScan Remote GitHub Repo:\033[0m
     devsecpac scan -r https://github.com/owner/repo.git
 
-  [green]Select Specific Security Engines:[/green]
+  \033[1;32mSelect Specific Security Engines:\033[0m
     devsecpac scan . -t gitleaks,semgrep,trivy
 
-  [green]Export & Push Directly to DefectDojo ASPM:[/green]
+  \033[1;32mExport & Push Directly to DefectDojo ASPM:\033[0m
     devsecpac scan . --defectdojo-push --defectdojo-url http://localhost:8080 --defectdojo-key <TOKEN> --defectdojo-engagement 1
 
-  [green]Environment & Auto-Configuration:[/green]
+  \033[1;32mEnvironment & Auto-Configuration:\033[0m
     devsecpac info          Show detected status of all 16 security engines
     devsecpac setup         Automatically install missing binary security tools
     devsecpac fix .         Generate local advisory remediation patch preview
     devsecpac pr-comment    Generate GitHub PR Markdown audit comment
 
-[bold cyan]SUPPORTED ENGINES (16 Multi-Stage Tools):[/bold cyan]
+\033[1;36mSUPPORTED ENGINES (16 Multi-Stage Tools):\033[0m
   * SAST:      Semgrep, GitHub CodeQL, SonarQube, MobSF
   * SCA:       Aqua Trivy, OWASP Dependency-Check
   * Secrets:   Gitleaks, TruffleHog
